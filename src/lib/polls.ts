@@ -201,6 +201,14 @@ export async function screenState(slug: string): Promise<ScreenState> {
         words: rows?.rows || [],
         answerCount: totals?.rows[0]?.answers || 0,
         participantCount: totals?.rows[0]?.participants || 0,
+        summary: q
+          ? (
+              await client.query(
+                'SELECT CASE WHEN ai_summary_revision=revision THEN ai_summary ELSE NULL END summary FROM questions WHERE id=$1',
+                [q.id],
+              )
+            ).rows[0]?.summary
+          : null,
       });
     }
     result.revision = JSON.stringify(

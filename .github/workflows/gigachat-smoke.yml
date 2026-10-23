@@ -1,0 +1,41 @@
+name: GigaChat synthetic smoke
+on:
+  push:
+    branches: [feature/04-gigachat-ai, develop]
+    paths:
+      - 'src/lib/ai/client.ts'
+      - 'src/lib/ai/validation.ts'
+      - 'src/lib/ai/contracts.ts'
+      - 'scripts/check-gigachat.ts'
+      - '.github/workflows/gigachat-smoke.yml'
+permissions:
+  contents: read
+concurrency:
+  group: gigachat-synthetic-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Prepare GigaChat trust bundle with verified HTTPS
+        run: |
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 45 --retry 2 https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt -o "$RUNNER_TEMP/gigachat-root.pem"
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 45 --retry 2 https://gu-st.ru/content/lending/russian_trusted_sub_ca_pem.crt -o "$RUNNER_TEMP/gigachat-sub.pem"
+          openssl x509 -in "$RUNNER_TEMP/gigachat-root.pem" -noout -subject -enddate -sha256 -fingerprint
+          openssl verify -CAfile "$RUNNER_TEMP/gigachat-root.pem" "$RUNNER_TEMP/gigachat-sub.pem"
+          cat "$RUNNER_TEMP/gigachat-root.pem" "$RUNNER_TEMP/gigachat-sub.pem" > "$RUNNER_TEMP/gigachat-ca.pem"
+      - name: OAuth, model discovery and strict JSON with synthetic words
+        run: node --import tsx scripts/check-gigachat.ts
+        env:
+          GIGACHAT_ENABLED: 'true'
+          GIGACHAT_AUTH_KEY: ${{ secrets.GIGACHAT_AUTH_KEY }}
+          GIGACHAT_SCOPE: GIGACHAT_API_PERS
+          GIGACHAT_TIMEOUT_MS: '20000'
+          GIGACHAT_CA_BUNDLE: ${{ runner.temp }}/gigachat-ca.pem
