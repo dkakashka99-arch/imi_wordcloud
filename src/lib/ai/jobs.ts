@@ -244,6 +244,10 @@ export async function reviewAnalysis(
     const job = r.rows[0];
     if (!job) throw new HttpError(404, 'AI-задание не найдено.');
     if (cmd.action === 'discard') {
+      await c.query(
+        "UPDATE questions SET ai_summary=NULL,ai_summary_revision=NULL,revision=revision+1 WHERE id=$1 AND ai_summary->>'jobId'=$2",
+        [questionId, job.id],
+      );
       await c.query(`UPDATE ai_jobs SET status='discarded' WHERE id=$1 AND status<>'running'`, [
         job.id,
       ]);
@@ -265,6 +269,7 @@ export async function reviewAnalysis(
             groups: job.snapshot.groups,
             model: job.model,
             analyzedAt: job.finishedAt,
+            jobId: job.id,
           }),
         ],
       );

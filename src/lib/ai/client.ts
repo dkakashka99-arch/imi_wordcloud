@@ -4,7 +4,10 @@ import https from 'node:https';
 import { rootCertificates } from 'node:tls';
 import { z } from 'zod';
 export class AiError extends Error {
-  constructor(public code: string) {
+  constructor(
+    public code: string,
+    public detail?: string,
+  ) {
     super(code);
   }
 }
@@ -120,7 +123,10 @@ export const transport: Transport = (url, headers, body, config) =>
       reject(
         e instanceof AiError
           ? e
-          : new AiError(/CERT|TLS|SSL|VERIFY/.test(code) ? 'tls' : 'network'),
+          : new AiError(
+              /CERT|TLS|SSL|VERIFY/.test(code) ? 'tls' : 'network',
+              /^[A-Z0-9_]+$/.test(code) ? code : undefined,
+            ),
       );
     });
     if (body !== undefined) req.write(body);

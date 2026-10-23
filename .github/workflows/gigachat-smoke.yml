@@ -31,6 +31,8 @@ jobs:
           openssl x509 -in "$RUNNER_TEMP/gigachat-root.pem" -noout -subject -enddate -sha256 -fingerprint
           openssl verify -CAfile "$RUNNER_TEMP/gigachat-root.pem" "$RUNNER_TEMP/gigachat-sub.pem"
           cat "$RUNNER_TEMP/gigachat-root.pem" "$RUNNER_TEMP/gigachat-sub.pem" > "$RUNNER_TEMP/gigachat-ca.pem"
+      - name: Verify OAuth TLS without credentials
+        run: timeout 25 openssl s_client -connect ngw.devices.sberbank.ru:9443 -servername ngw.devices.sberbank.ru -CAfile "$RUNNER_TEMP/gigachat-ca.pem" -verify_return_error -brief </dev/null
       - name: OAuth, model discovery and strict JSON with synthetic words
         run: node --import tsx scripts/check-gigachat.ts
         env:

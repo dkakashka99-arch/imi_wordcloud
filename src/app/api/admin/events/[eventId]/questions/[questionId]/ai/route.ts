@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { requireAdmin } from '@/lib/admin/auth';
 import { aiCommand, taskKind } from '@/lib/ai/contracts';
 import { aiState, startAnalysis, reviewAnalysis } from '@/lib/ai/jobs';
+import { AiError } from '@/lib/ai/client';
 import { failure, HttpError, json, readJson, requireOrigin } from '@/lib/http';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,8 @@ export async function POST(request: Request, ctx: Context) {
         : await reviewAnalysis(p.eventId, p.questionId, command.data),
     );
   } catch (e) {
+    if (e instanceof AiError)
+      return json({ error: 'ИИ временно недоступен. Опрос продолжает работать.' }, 503);
     return failure(e);
   }
 }

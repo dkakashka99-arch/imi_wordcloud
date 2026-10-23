@@ -142,6 +142,32 @@ export async function checkAdminHttp(origin: string) {
       [137, 80, 78, 71, 13, 10, 26, 10],
     );
     const modPath = `/api/admin/events/${id}/questions/${q.id}`;
+    assert.equal((await call(`${modPath}/ai`)).status, 401);
+    const ai = await (await call(`${modPath}/ai`, 'GET', undefined, cookie)).json();
+    assert.equal(ai.available, false);
+    assert.equal(
+      (
+        await call(
+          `${modPath}/ai`,
+          'POST',
+          { action: 'start', kind: 'summary', words: ['команда'], consent: true },
+          cookie,
+        )
+      ).status,
+      503,
+    );
+    assert.equal(
+      (
+        await call(
+          `${modPath}/ai`,
+          'POST',
+          { action: 'unpublish' },
+          cookie,
+          'https://untrusted.example',
+        )
+      ).status,
+      403,
+    );
     assert.equal((await call(`${modPath}/moderation`)).status, 401);
     assert.equal((await call(`${modPath}/export`)).status, 401);
     const rules = {

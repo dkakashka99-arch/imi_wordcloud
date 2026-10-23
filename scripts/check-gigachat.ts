@@ -41,7 +41,12 @@ try {
   );
 } catch (e) {
   console.error(
-    JSON.stringify({ status: 'FAIL', phase, code: e instanceof AiError ? e.code : 'unavailable' }),
+    JSON.stringify({
+      status: 'FAIL',
+      phase,
+      code: e instanceof AiError ? e.code : 'unavailable',
+      detail: e instanceof AiError ? e.detail : undefined,
+    }),
   );
   process.exitCode = 1;
 }
