@@ -4,7 +4,7 @@
 
 Ветка `feature/01-core-flow`, на основе bootstrap `5be4f65`. Последний подтверждённый результат: production standalone собран, lint/typecheck пройдены, 3 unit и 8 integration тестов, HTTP flow (включая QR, pause и restart Next.js) успешно проверены на PGlite. `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities. Подробности и ограничения — TEST_REPORT.md.
 
-Локальные main/develop указывают на стартовый пустой commit. Ничего не опубликовано и не слито. Не считать local commit готовым PR или успешным CI. Feature 00 сохранена для истории, но перед отдельной публикацией её skeleton CI нужно адаптировать к отсутствию integration tests на том этапе; полная CI-конфигурация текущей feature 01 уже включает реальные integration/HTTP тесты.
+Локальные main/develop указывают на стартовый пустой commit. Ничего не опубликовано и не слито. Не считать local commit готовым PR или успешным CI. Feature 00 содержит отдельное исправление skeleton CI: на bootstrap запускаются только существующие unit/build проверки. Полная CI-конфигурация feature 01 дополнительно запускает миграции и реальные integration/HTTP тесты.
 
 ## Первый незавершённый пункт
 
