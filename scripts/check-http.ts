@@ -1,3 +1,4 @@
+import { checkAdminHttp } from './check-admin-http';
 import { removeTestEvent } from './test-cleanup';
 import { cp } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -106,6 +107,7 @@ try {
     (await post({ ...payload, text: 'другой ответ', idempotencyKey: randomUUID() })).status,
     409,
   );
+  await checkAdminHttp(origin);
   console.log(
     'HTTP FLOW PASS: cookie → validated POST → stored word → screen aggregate; replay, Origin, strict JSON, QR, pause and app restart persistence checked. Browser rendering is not covered.',
   );

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { cookies } from 'next/headers';
+import { cookies } from 'next/headers.js';
 export class HttpError extends Error {
   constructor(
     public status: number,
@@ -41,4 +41,28 @@ export function failure(error: unknown) {
   // Do not expose SQL, submitted text, cookies or credentials in responses/logs.
   console.error('API operation failed', error instanceof Error ? error.name : 'UnknownError');
   return json({ error: 'Сервис временно недоступен. Попробуйте ещё раз.' }, 503);
+}
+
+export async function readJson(request: Request, maxBytes = 8192): Promise<unknown> {
+  if (Number(request.headers.get('content-length') || 0) > maxBytes)
+    throw new HttpError(413, 'Слишком большой запрос.');
+  const reader = request.body?.getReader();
+  if (!reader) throw new HttpError(400, 'Пустой запрос.');
+  let size = 0;
+  const parts: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new HttpError(413, 'Слишком большой запрос.');
+    }
+    parts.push(value);
+  }
+  try {
+    return JSON.parse(Buffer.concat(parts).toString('utf8'));
+  } catch {
+    throw new HttpError(400, 'Некорректный JSON.');
+  }
 }

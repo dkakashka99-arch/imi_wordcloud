@@ -11,3 +11,7 @@ Node.js 24. `npm ci`, скопировать `.env.example` в `.env`, зада�
 Проверки: `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:integration`, `npm run build`. Integration требует выделенную тестовую БД, никогда не production.
 
 Статус реализации и блокеры — в TASKS.md. Публичного deployment пока нет. Лицензия не выбрана заказчиком; права не передаются автоматически.
+
+## Организаторам
+
+Кабинет — `/admin`, вход — `/admin/login`. Первого администратора создаёт оператор отдельно от seed; безопасная процедура и инструкция проведения опроса: [docs/ADMIN.md](docs/ADMIN.md). Production-сервер ещё не предоставлен; встроенных production-учётных данных нет.
