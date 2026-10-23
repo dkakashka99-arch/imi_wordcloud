@@ -7,6 +7,7 @@ import type { ParticipantState, Question, ScreenState } from './contracts';
 type QueryClient = Pick<PoolClient, 'query'>;
 type Context = {
   event_id: string;
+  rehearsal: boolean;
   title: string;
   slug: string;
   audience_id: string;
@@ -20,7 +21,7 @@ async function context(
   lockEvent = false,
 ): Promise<Context> {
   const result = await client.query<Context>(
-    `SELECT e.id event_id,e.title,e.slug,a.id audience_id,a.key audience_key,a.label FROM events e JOIN audiences a ON a.event_id=e.id WHERE e.slug=$1 AND a.key=$2 AND NOT e.archived${lockEvent ? ' FOR SHARE OF e' : ''}`,
+    `SELECT e.id event_id,e.title,e.slug,e.rehearsal,a.id audience_id,a.key audience_key,a.label FROM events e JOIN audiences a ON a.event_id=e.id WHERE e.slug=$1 AND a.key=$2 AND NOT e.archived${lockEvent ? ' FOR SHARE OF e' : ''}`,
     [slug, audience],
   );
   if (!result.rows[0]) throw new HttpError(404, 'Мероприятие или группа не найдены.');
@@ -50,7 +51,7 @@ export async function participantState(
       )
     : null;
   return {
-    event: { title: ctx.title, slug: ctx.slug },
+    event: { title: ctx.title, slug: ctx.slug, rehearsal: ctx.rehearsal },
     audience: { key: ctx.audience_key, label: ctx.label },
     question,
     remaining: question ? Math.max(0, question.maxAnswers - (count?.rows[0]?.n || 0)) : 0,
@@ -117,9 +118,25 @@ export async function submit(
         );
         if (count.rows[0].n >= q.max_answers)
           throw new HttpError(409, 'Вы уже отправили максимальное число ответов.');
+        const blocked = await client.query(
+          `SELECT 1 FROM stop_words sw LEFT JOIN word_aliases wa ON wa.question_id=sw.question_id AND wa.source=$2 WHERE sw.question_id=$1 AND sw.word IN($2,COALESCE(wa.target,$2))`,
+          [q.id, key],
+        );
+        if (blocked.rowCount)
+          throw new HttpError(400, 'Этот ответ не допускается правилами вопроса.');
         await client.query(
-          `INSERT INTO submissions(event_id,question_id,audience_id,participant_id,original_text,canonical_key,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-          [ctx.event_id, q.id, ctx.audience_id, participant, input.text, key, input.idempotencyKey],
+          `INSERT INTO submissions(event_id,question_id,audience_id,participant_id,original_text,canonical_key,idempotency_key,approved,is_demo) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            ctx.event_id,
+            q.id,
+            ctx.audience_id,
+            participant,
+            input.text,
+            key,
+            input.idempotencyKey,
+            !q.premoderation,
+            ctx.rehearsal,
+          ],
         );
         await client.query('UPDATE questions SET revision=revision+1 WHERE id=$1', [q.id]);
       }
@@ -147,7 +164,7 @@ export async function screenState(slug: string): Promise<ScreenState> {
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const e = await client.query(
-      'SELECT id,title,slug FROM events WHERE slug=$1 AND NOT archived',
+      'SELECT id,title,slug,rehearsal FROM events WHERE slug=$1 AND NOT archived',
       [slug],
     );
     if (!e.rows[0]) throw new HttpError(404, 'Мероприятие не найдено.');
@@ -156,18 +173,24 @@ export async function screenState(slug: string): Promise<ScreenState> {
       'SELECT id,key,label FROM audiences WHERE event_id=$1 ORDER BY key',
       [event.id],
     );
-    const result: ScreenState = { title: event.title, slug, revision: '', audiences: [] };
+    const result: ScreenState = {
+      title: event.title,
+      slug,
+      rehearsal: event.rehearsal,
+      revision: '',
+      audiences: [],
+    };
     for (const a of groups.rows) {
       const q = await activeQuestion({ audience_id: a.id } as Context, client);
       const rows = q
         ? await client.query(
-            `SELECT canonical_key text,count(*)::int count FROM submissions WHERE question_id=$1 AND audience_id=$2 AND approved GROUP BY canonical_key ORDER BY count DESC,canonical_key LIMIT 80`,
+            `SELECT COALESCE(wa.target,s.canonical_key) text,count(*)::int count FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 AND s.audience_id=$2 AND s.approved AND NOT EXISTS(SELECT 1 FROM stop_words sw WHERE sw.question_id=s.question_id AND sw.word IN(s.canonical_key,COALESCE(wa.target,s.canonical_key))) GROUP BY COALESCE(wa.target,s.canonical_key) ORDER BY count DESC,text LIMIT 80`,
             [q.id, a.id],
           )
         : null;
       const totals = q
         ? await client.query(
-            `SELECT count(*)::int answers,count(DISTINCT participant_id)::int participants FROM submissions WHERE question_id=$1 AND audience_id=$2 AND approved`,
+            `SELECT count(*)::int answers,count(DISTINCT s.participant_id)::int participants FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 AND s.audience_id=$2 AND s.approved AND NOT EXISTS(SELECT 1 FROM stop_words sw WHERE sw.question_id=s.question_id AND sw.word IN(s.canonical_key,COALESCE(wa.target,s.canonical_key)))`,
             [q.id, a.id],
           )
         : null;

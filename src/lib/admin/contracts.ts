@@ -17,7 +17,13 @@ export const questionFields = {
 export const commandInput = z.discriminatedUnion('action', [
   z.object({ action: z.literal('editEvent'), title }).strict(),
   z.object({ action: z.literal('archive'), archived: z.boolean() }).strict(),
-  z.object({ action: z.literal('duplicate'), ...createEventInput.shape }).strict(),
+  z
+    .object({
+      action: z.literal('duplicate'),
+      rehearsal: z.boolean().optional(),
+      ...createEventInput.shape,
+    })
+    .strict(),
   z.object({ action: z.literal('addAudience'), key, label: title }).strict(),
   z.object({ action: z.literal('editAudience'), audienceId: z.uuid(), label: title }).strict(),
   z.object({ action: z.literal('deleteAudience'), audienceId: z.uuid() }).strict(),
@@ -53,6 +59,7 @@ export type AdminEvent = {
   slug: string;
   title: string;
   archived: boolean;
+  rehearsal: boolean;
   createdAt: string;
   audiences: { id: string; key: string; label: string }[];
   questions: AdminQuestion[];
@@ -62,6 +69,7 @@ export type EventListItem = {
   slug: string;
   title: string;
   archived: boolean;
+  rehearsal: boolean;
   createdAt: string;
   questionCount: number;
   answerCount: number;

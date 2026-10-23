@@ -141,6 +141,33 @@ export async function checkAdminHttp(origin: string) {
       Array.from(new Uint8Array(await png.arrayBuffer()).slice(0, 8)),
       [137, 80, 78, 71, 13, 10, 26, 10],
     );
+    const modPath = `/api/admin/events/${id}/questions/${q.id}`;
+    assert.equal((await call(`${modPath}/moderation`)).status, 401);
+    assert.equal((await call(`${modPath}/export`)).status, 401);
+    const rules = {
+      action: 'rules',
+      premoderation: true,
+      stopWords: ['стоп'],
+      aliases: [{ source: 'зп', target: 'зарплата' }],
+    };
+    assert.equal(
+      (await call(`${modPath}/moderation`, 'POST', rules, cookie, 'https://untrusted.example'))
+        .status,
+      403,
+    );
+    assert.equal((await call(`${modPath}/moderation`, 'POST', rules, cookie)).status, 200);
+    const state = await (await call(`${modPath}/moderation`, 'GET', undefined, cookie)).json();
+    assert.equal(state.premoderation, true);
+    assert.deepEqual(state.aliases, [{ source: 'зп', target: 'зарплата' }]);
+    assert.equal(
+      (await call(`${modPath}/moderation?page=-1`, 'GET', undefined, cookie)).status,
+      400,
+    );
+    const csv = await call(`${modPath}/export`, 'GET', undefined, cookie);
+    assert.equal(csv.status, 200);
+    assert.match(csv.headers.get('content-type') || '', /^text\/csv/u);
+    assert.match(csv.headers.get('content-disposition') || '', /^attachment;/u);
+    assert((await csv.text()).includes('Исходный ответ'));
     const page = await call(`/admin/events/${id}`, 'GET', undefined, cookie);
     assert.equal(page.status, 200);
     assert(!(await page.text()).includes('password_hash'));
@@ -157,6 +184,8 @@ export async function checkAdminHttp(origin: string) {
       ).status,
       401,
     );
+    assert.equal((await call(`${modPath}/moderation`, 'GET', undefined, cookie)).status, 401);
+    assert.equal((await call(`${modPath}/export`, 'GET', undefined, cookie)).status, 401);
     console.log(
       'ADMIN HTTP PASS: safe bootstrap, login, secure cookie, protected reads/writes, Origin, event/question creation, PNG QR and revoked logout session.',
     );

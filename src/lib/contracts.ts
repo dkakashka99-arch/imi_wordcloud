@@ -12,12 +12,13 @@ export type Question = {
   revision: number;
 };
 export type ParticipantState = {
-  event: { title: string; slug: string };
+  event: { title: string; slug: string; rehearsal: boolean };
   audience: { key: string; label: string };
   question: Question | null;
   remaining: number;
 };
 export type ScreenState = {
+  rehearsal: boolean;
   title: string;
   slug: string;
   revision: string;

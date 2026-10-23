@@ -1,21 +1,13 @@
-# Checkpoint — шаг 2, 23.10.2026
+# Checkpoint — перенос и шаг 3, 23.10.2026
 
-## База и локальный результат
+Текущая ветка feature/03-moderation-display поверх локального 08f2ccd (remote шаг 2 d936816778e6ca5490332064e0f4cdfef99aabea, tree3932db2f68bf0d428a05665dc933f580abdfbe70). Чужих изменений нет. Шаг 3 реализован и проверен локально, подробности docs/STEP_03_REPORT.md. Не повторять чтение всего проекта и завершённые локальные проверки без изменений.
 
-Remote: salakal/imi-wordcloud. Шаги 0–1 слиты через PR #1/#2; develop при старте шага 2: 0668508f090eca7e767a30d6849ffc0f299238cb. Локальные и API-коммиты имеют разные SHA, сравнивать деревья и актуальное состояние GitHub.
+## Первое незавершённое действие
 
-Текущая feature/02-admin-events реализует вход/scrypt, PostgreSQL-сессии/limiter, безопасный bootstrap, управление мероприятиями/группами/вопросами, текущий вопрос, pause/resume, архив/копирование, SVG/PNG QR. Подробности: docs/STEP_02_REPORT.md и docs/ADMIN.md.
+Перенести проект по инструкции пользователя из salakal/imi-wordcloud в новый аккаунт devwork, фактический репозиторий dkakashka99-arch/imi_wordcloud. Новое подключение devwork; исходное Primary. Каждый GitHub tool требует явный link_id. Репозиторий назначения пустой и PUBLIC. Чтение метаданных работает; create_file и collaborator permission дают 403 Resource not accessible by integration. Файлы/ветки в новом repo не созданы. Нужно восстановить write scope/доступ GitHub installation к репозиторию. Не пробовать запись в цикле; после изменения прав проверить состояние перед повтором. Не удалять старый репозиторий.
 
-Локально PASS: lint, typecheck, 6 unit, production build, 14 integration на PGlite и standalone public/admin HTTP (включая bootstrap/stdin, cookie, авторизацию, Origin, logout). До заявления DONE нужен PostgreSQL 17 и browser CI актуального remote head. Новый E2E добавлен, ещё не запускался в браузере локально.
+Для сохранности новая работа отправляется только в feature/03-moderation-display исходного приватного репозитория, без merge/повторного PR шага 2. Локальная история отличается от API-коммитов, сравнивать tree. Manifest полного исходного дерева до шага 3: ../migration-tree.json; нужно пересоздать после изменений, только tracked исходники, без .env/секретов/node_modules/.next.
 
-## Следующее действие
+После восстановления доступа: перенос веток/истории, CI текущей головы шага 2 (PR #3 старого repo). После PASS merge в develop нового repo, затем PR шага 3 и его native PostgreSQL/browser CI. У шага 3 локально PASS lint/typecheck, 8 unit, build, 18 integration PGlite и HTTP; E2E не запускался, физических устройств/проектора нет. Старый Actions job39933775435 не стартовал из-за billing/spending limit, причина подтверждена annotation. Платные изменения агент не выполняет.
 
-PR #3 уже открыт: https://github.com/salakal/imi-wordcloud/pull/3 . Implementation head d0a1cf54c6312768462d524213a36be60e9b4d0f, tree 4c1815e3d6f8372e8c9d5e1f7a5b92afff0ed422 соответствует локальному 223c406. Не создавать повторный PR/ветку и не переносить код заново.
-
-CI 39933775435 дважды завершился до старта команд: runner отсутствует, steps пустые (jobs 120348196999, 120349654090). 23.10 после безопасного входа в браузере прочитана annotation GitHub: «The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings». Владельцу нужно проверить Billing & plans и устранить проблему оплаты/лимита Actions; платные изменения агент не выполняет. Второе сообщение — уведомление о переходе ubuntu-latest на Ubuntu 26, не ошибка тестов. Затем запустить CI актуальной головы PR: PostgreSQL 17 + 6 unit/14 integration/4 browser и HTTP. Код и локальные проверки не повторять без изменений.
-
-PR оставлен открытым, без merge. После устранения блокера проверять актуальную голову и expected_head_sha; без force push main/develop. Если PR уже слит — следующий шаг 3, иначе завершить текущий гейт. Проверять все workflow runs через github_fetch /actions/runs?head_sha=..., а не только PR-filtered helper.
-
-## Внешние условия
-
-VPS/домен не предоставлены; production не публиковался. GigaChat выключен, ключ/квота/условия Freemium не подтверждены, клиент пока не реализован. Физические устройства, сети РФ, нагрузка 200–300/p95, restart native PostgreSQL/backup restore — не проверены. Production выпуск требует финального подтверждения по SPEC.md. IMI One не используется.
+VPS/домен и GigaChat ключ не предоставлены. Production не публиковался, AI выключен. Main/develop не менялись, IMI One не используется. Следующий этап 4 пока не начинать: сначала закончить перенос и гейты 2–3.

@@ -15,6 +15,13 @@
       "when": 1792747200580,
       "tag": "0001_breezy_the_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792750103304,
+      "tag": "0002_amusing_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }

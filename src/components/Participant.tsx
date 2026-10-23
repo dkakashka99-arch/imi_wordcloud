@@ -102,6 +102,7 @@ export function Participant({ slug, audience }: { slug: string; audience: string
       </header>
       <section className="form-wrap">
         <p className="eyebrow">{data?.event.title || 'Подключаемся к мероприятию'}</p>
+        {data?.event.rehearsal && <p className="notice">Репетиция · тестовый опрос</p>}
         <h1>{data?.question?.title || 'Ждём начала опроса'}</h1>
         {status === 'open' ? (
           <>

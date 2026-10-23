@@ -4,7 +4,8 @@ import { HttpError } from '@/lib/http';
 import type { AdminCommand, AdminEvent, EventListItem } from './contracts';
 
 export async function listEvents(): Promise<EventListItem[]> {
-  const r = await database().query(`SELECT e.id,e.slug,e.title,e.archived,e.created_at "createdAt",
+  const r = await database()
+    .query(`SELECT e.id,e.slug,e.title,e.archived,e.rehearsal,e.created_at "createdAt",
  (SELECT count(*)::int FROM questions q WHERE q.event_id=e.id) "questionCount",
  (SELECT count(*)::int FROM submissions s WHERE s.event_id=e.id) "answerCount" FROM events e ORDER BY e.archived,e.created_at DESC,e.id`);
   return r.rows;
@@ -14,7 +15,7 @@ export async function getEvent(id: string): Promise<AdminEvent> {
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const event = await client.query(
-      'SELECT id,slug,title,archived,created_at "createdAt" FROM events WHERE id=$1',
+      'SELECT id,slug,title,archived,rehearsal,created_at "createdAt" FROM events WHERE id=$1',
       [id],
     );
     if (!event.rows[0]) throw new HttpError(404, 'Мероприятие не найдено.');
@@ -93,6 +94,10 @@ export async function eventCommand(eventId: string, cmd: AdminCommand): Promise<
         );
     } else if (cmd.action === 'duplicate') {
       const id = await insertEvent(client, cmd.title, cmd.slug);
+      await client.query('UPDATE events SET rehearsal=$2 WHERE id=$1', [
+        id,
+        cmd.rehearsal ?? false,
+      ]);
       const mapping = new Map<string, string>();
       const audiences = await client.query('SELECT id,key,label FROM audiences WHERE event_id=$1', [
         eventId,
@@ -108,6 +113,18 @@ export async function eventCommand(eventId: string, cmd: AdminCommand): Promise<
         const r = await client.query(
           'INSERT INTO questions(event_id,title,max_answers,max_length,position) VALUES($1,$2,$3,$4,$5) RETURNING id',
           [id, q.title, q.max_answers, q.max_length, q.position],
+        );
+        await client.query(
+          'INSERT INTO word_aliases(question_id,source,target) SELECT $2,source,target FROM word_aliases WHERE question_id=$1',
+          [q.id, r.rows[0].id],
+        );
+        await client.query(
+          'INSERT INTO stop_words(question_id,word) SELECT $2,word FROM stop_words WHERE question_id=$1',
+          [q.id, r.rows[0].id],
+        );
+        await client.query(
+          'UPDATE questions SET premoderation=(SELECT premoderation FROM questions WHERE id=$1) WHERE id=$2',
+          [q.id, r.rows[0].id],
         );
         const links = await client.query(
           'SELECT audience_id FROM question_audiences WHERE question_id=$1',
