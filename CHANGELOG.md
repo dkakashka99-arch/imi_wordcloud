@@ -25,3 +25,7 @@ CI в GitHub подтверждён на PostgreSQL 17, а также в Chromiu
 ## Шаг 3 — подготовлен, CI ожидается
 
 Модерация, предмодерация, стоп-лист, алиасы, исходный/агрегированный CSV, отдельные репетиции и сравнение двух групп. Перенос в devwork заблокирован правами GitHub integration; browser/native проверки не выполнены.
+
+## Перенос в devwork и проверка этапа 3
+
+Проект перенесён в dkakashka99-arch/imi_wordcloud, восстановлены ветки и локальная история с проверкой каждого дерева. CI этапа3 прошёл на native PostgreSQL17 и Chromium/WebKit (6 E2E). Исправлен ESM импорт Next headers для браузерных фикстур. См. docs/MIGRATION.md и docs/STEP_03_REPORT.md.

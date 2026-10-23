@@ -40,3 +40,9 @@ Cookie случайного участника → строгая Zod-прове
 - Chromium/Pixel 7: появление слова без F5 за 4377 мс; WebKit/iPhone 13: 3880 мс. Два измерения в CI/development-сервере не являются p95 и не подтверждают задержку из российских сетей.
 - Browser E2E проверяет настоящий submit, общий экран 1920×1080, QR, отсутствие горизонтального overflow, сохранение лимита после reload и паузу. Браузерный сервер — Next.js dev, production standalone проверяется отдельно HTTP smoke; настоящий production HTTPS ещё не поднят.
 - `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities в production-зависимостях. `npm ci` также сообщил 9 находок dev-зависимостей (4 moderate, 5 high); они не включены в production audit и требуют отдельного разбора до релиза. Не трактовать production audit как отсутствие любых находок во всём dev-toolchain.
+
+## Этап 3 и перенос — 23.10.2026
+
+Текущий репозиторий https://github.com/dkakashka99-arch/imi_wordcloud. Полный CI39941087673, head bb01ac3397d31563a97e3a3b8f063fb4c69bb847: PASS lint/typecheck, 8 unit, PostgreSQL17 миграции/18 integration, build, public/admin HTTP, 6 E2E (Chromium/Pixel7, WebKit/iPhone13), production audit0. Проверены создание/проведение/архив/копия, logout, скрытие/возврат HTML как текста без исполнения, CSV download, сравнение групп/overflow; integration проверяет правила, неизменность исходников, CSV формулы и изоляцию репетиции.
+
+Первые прогоны обнаружили ESM импорт next/headers в фикстурах; явный next/headers.js в auth/http исправил загрузку. Рабочий код и проверки не подменялись mock ради CI. Точные сведения docs/STEP_03_REPORT.md. Старые ограничения runtime-нагрузки, настоящих устройств/сетей РФ, VPS/HTTPS, backup/restore и ключа GigaChat сохраняются. Нахождения полного dev audit9 остаются отдельной задачей до релиза.
