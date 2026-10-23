@@ -237,7 +237,7 @@ export class GigaClient {
   }
   async model() {
     const r = modelsSchema.safeParse(await this.api('models'));
-    if (!r.success) throw new AiError('invalid_response');
+    if (!r.success) throw new AiError('invalid_response', 'MODEL_ENVELOPE');
     const ids = r.data.data.map((m) => m.id);
     const selected = this.config.model || ['GigaChat-2', 'GigaChat'].find((m) => ids.includes(m));
     if (!selected || !ids.includes(selected)) throw new AiError('model_unavailable');
@@ -256,14 +256,14 @@ export class GigaClient {
       response_format: { type: 'json_schema', schema, strict: true },
     });
     const r = chatSchema.safeParse(body);
-    if (!r.success) throw new AiError('invalid_response');
+    if (!r.success) throw new AiError('invalid_response', 'CHAT_ENVELOPE');
     if (r.data.choices[0].finish_reason && r.data.choices[0].finish_reason !== 'stop')
       throw new AiError('safety_or_incomplete');
     let result: unknown;
     try {
       result = JSON.parse(r.data.choices[0].message.content);
     } catch {
-      throw new AiError('invalid_response');
+      throw new AiError('invalid_response', 'CONTENT_JSON');
     }
     return { result, usage: r.data.usage ?? null, model: r.data.model };
   }

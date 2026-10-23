@@ -14,11 +14,12 @@ const snapshot: Snapshot = {
   ],
 };
 let phase = 'configuration';
+let model: string | undefined;
 try {
   aiConfig();
   const client = gigaClient();
   phase = 'oauth_and_models';
-  const model = await client.model();
+  model = await client.model();
   phase = 'structured_chat';
   const response = await client.generate(
     model,
@@ -26,6 +27,7 @@ try {
     { words: snapshot.words },
     responseSchema('aliases'),
   );
+  phase = 'semantic_validation';
   validateResult('aliases', response.result, snapshot);
   console.log(
     JSON.stringify({
@@ -44,6 +46,7 @@ try {
     JSON.stringify({
       status: 'FAIL',
       phase,
+      model,
       code: e instanceof AiError ? e.code : 'unavailable',
       detail: e instanceof AiError ? e.detail : undefined,
     }),
