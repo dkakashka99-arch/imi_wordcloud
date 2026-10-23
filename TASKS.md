@@ -4,7 +4,7 @@
 | --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0 — Bootstrap               | DONE                           | Отдельный локальный Git, main/develop/feature ветки, Next.js/Drizzle, стартовый CI; локальная сборка прошла. GitHub PR #1 слит в develop после успешного CI                                                                                                               |
 | 1 — Телефон → БД → проектор | DONE                           | PostgreSQL 17: миграция, 8 integration, HTTP/QR/restart; 3 unit; 2 браузерных E2E Chromium и WebKit. CI run 39928395171 success на 648f11f. Native DB restart/backup и реальные сети — этапы 5–6                                                                          |
-| 2 — Управление              | BLOCKED: CI runner             | Авторизация/scrypt, PostgreSQL-сессии и login limiter; CRUD, группы, статусы, архив/копия, QR SVG/PNG. Локально 6 unit + 14 integration + production HTTP PASS. PR #3 открыт; run 39933775435 дважды завершён до выделения runner, native/browser проверки не запускались |
+| 2 — Управление              | BLOCKED: Actions billing             | Авторизация/scrypt, PostgreSQL-сессии и login limiter; CRUD, группы, статусы, архив/копия, QR SVG/PNG. Локально 6 unit + 14 integration + production HTTP PASS. PR #3 открыт; GitHub annotation подтверждает проблему оплаты/лимита Actions; native/browser проверки не запускались |
 | 3 — Модерация               | TODO                           | Админ UI, стоп-лист, алиасы, CSV, сравнение, репетиция                                                                                                                                                                                                                    |
 | 4 — GigaChat                | TODO / external access blocked | Клиент, OAuth/TLS, очередь, schema, подтверждение человеком, UI, реальные и mock проверки                                                                                                                                                                                 |
 | 5 — Российский VPS          | BLOCKED / TODO                 | Нужны сервер и домен; затем Docker/Nginx/HTTPS, backup и rollback                                                                                                                                                                                                         |
@@ -12,6 +12,8 @@
 | 7 — Release                 | TODO                           | Проверка заказчиком, release gate, main/tag и production                                                                                                                                                                                                                  |
 
 ## Внешние действия владельца
+
+0. Устранить проблему оплаты/лимита GitHub Actions в Billing & plans аккаунта salakal, затем сообщить агенту для повторного запуска CI PR #3.
 
 1. DONE: создан приватный `salakal/imi-wordcloud`, доступный подключённому GitHub. Репозиторий доступен с правами admin/push. Ветки, коммиты и PR выполняет агент через GitHub API.
 2. Предоставить доступ к отдельному VPS в России и домен/субдомен. Расходы согласовать до покупки; IMI One не использовать.
