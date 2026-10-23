@@ -31,3 +31,5 @@
 https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/39941087673 — SUCCESS на bb01ac3397d31563a97e3a3b8f063fb4c69bb847, job120372400517. PASS: lint/typecheck, 8 unit, миграции PostgreSQL17, 18 integration, production build, standalone public/admin HTTP, 6 browser E2E Chromium/Pixel7 и WebKit/iPhone13, production audit0. Браузерный сервер — Next dev; standalone проверен HTTP отдельно. Измерения core-flow: 1920 мс Chromium и 2063 мс WebKit; это два измерения CI, не p95 и не сети РФ. Полный npm ci сообщает прежние 9 dev-toolchain находок (4 moderate/5 high), разбор до production остаётся обязательным.
 
 Обнаруженная CI-ошибка загрузки ESM фикстур устранена явным next/headers.js в auth/http. До исправления Playwright не мог загрузить admin tests; после — обнаруживает все6, полный прогон PASS. Проверки не ослаблялись. PR #2 ожидает последовательного merge после отдельного gate PR #1.
+
+CI39941760344 на bc33c8875a1da92398598c2ec24041b8b8e6b06d также SUCCESS. Отдельный gate этапа2 прошёл в CI39941081500 attempt2, PR #1 слит. Осталась доставка последней документации и PR #2; новых изменений runtime после успешных прогонов нет.

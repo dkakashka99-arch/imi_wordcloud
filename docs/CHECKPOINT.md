@@ -1,13 +1,17 @@
-# Checkpoint — перенос и CI этапов 2–3, 23.10.2026
+# Checkpoint — этапы 2–3 после переноса, 23.10.2026
 
-Текущий репозиторий https://github.com/dkakashka99-arch/imi_wordcloud, подключение devwork. Доступ восстановлен после установки GitHub App (installation174444890). Старый salakal/imi-wordcloud сохранён. Детали и карта коммитов: docs/MIGRATION.md. origin указывает на новый repo, source-salakal — на старый. Локальные и remote commit SHA отличаются; сравнивать деревья. Не переносить код повторно.
+Текущий репозиторий: https://github.com/dkakashka99-arch/imi_wordcloud, подключение devwork. Перенос завершён; деревья восстановленных версий сверены с исходными. Старый salakal/imi-wordcloud сохранён. Карта коммитов/PR — docs/MIGRATION.md. origin — новый repo, source-salakal — старый. Локальные и API SHA отличаются; сравнивать tree. Не переносить повторно.
 
-Исходная ветка 3: remote e291f4a6365a72ddf552bc0b80c977edc4466db1, локально 449c7d3; tree e71e278738bfede7ad2b71bf254fce1494276a3f проверено. После переноса исправлен импорт next/headers.js; локальный 8b8af6d соответствует remote bb01ac3397d31563a97e3a3b8f063fb4c69bb847. Все рабочие ветки восстановлены. Новый main — только README, production-релиза нет.
+## Подтверждённое состояние
 
-Этап 2: новый PR #1, текущий code head db18420d080c4a6c9af5864bd22125021dd99597. CI39941081500: lint/typecheck, 6 unit, PostgreSQL17 миграции/14 integration/build/HTTP PASS; установка браузеров ещё выполнялась при записи. Первый CI39940693442 обнаружил ошибку ESM импорта next/headers в fixtures; исправление next/headers.js проверено локально командой playwright test --list и полным CI этапа3. До merge PR #1 нужен его отдельный успешный CI, не отменять здоровый job.
+Этап 2: PR #1 слит в develop, merge ded479a2eaeab59b343b62b8a2477dfb0cb29e8a. CI39941081500 attempt2 SUCCESS, job120523888191, code head db18420d080c4a6c9af5864bd22125021dd99597: lint/typecheck, 6 unit, PostgreSQL17 миграции/14 integration, build, public/admin HTTP, 4 Chromium/WebKit E2E, production audit0. Attempt1 остановился на таймауте Ubuntu mirror при установке браузеров; повтор без изменений прошёл.
 
-Этап 3: PR #2, CI39941087673 SUCCESS на bb01ac3397d31563a97e3a3b8f063fb4c69bb847, job120372400517: lint/typecheck, 8 unit, PostgreSQL17/18 integration, build, public/admin HTTP, 6 browser E2E Chromium/WebKit, production audit0. Подробности docs/STEP_03_REPORT.md. Никакого повторного локального прогона без новых изменений; новый documentation-only commit требует CI актуальной головы PR, ожидается отдельно.
+Этап 3: PR #2. Полный CI39941087673 SUCCESS на bb01ac3397d31563a97e3a3b8f063fb4c69bb847; документационный head bc33c8875a1da92398598c2ec24041b8b8e6b06d — CI39941760344 SUCCESS. Проверены lint/typecheck, 8 unit, PostgreSQL17/18 integration, build, public/admin HTTP, 6 Chromium/WebKit E2E, production audit0. Ограничения — docs/STEP_03_REPORT.md и TEST_REPORT.md. Явный next/headers.js устранил загрузку ESM фикстур; проверки не ослаблялись.
 
-Следующее действие: проверить live-состояние PR #1/#2 и последние workflow runs через /actions/runs?head_sha=... (не только PR-filter helper). Если ещё открыты — завершить гейт и слить последовательно 2 → 3 в develop с expected_head_sha после PASS. Если уже слиты — проверить итоговый develop CI, этапы2–3 технически завершены; следующий этап4 по отдельному разрешению пользователя. Сверять HEAD/tree перед исправлениями; локальная история и remote отличаются. Не переносить повторно, не делать force push.
+## Первое незавершённое действие
 
-VPS/домен и ключ GigaChat не предоставлены. Production не публиковался, AI выключен. Физические устройства/сети РФ, нагрузка200–300, native backup/restore не проверены. Main и IMI One не изменять. Этап 4 отдельно после завершения текущих проверок.
+Этот коммит меняет только итоговую документацию. Проверить актуальную голову PR #2 и её CI через /actions/runs?head_sha=...; слить в develop с expected_head_sha после PASS, затем проверить итоговый develop CI. Если PR уже слит и develop зелёный — этапы 2–3 завершены, не повторять локальные проверки без новых изменений. По разрешению пользователя продолжать этап 4 (GigaChat). При неожиданном head/изменениях сверить live-состояние, не выполнять force push.
+
+## Оставшиеся условия
+
+Main — только начальный README, production-релиза нет. VPS/домен и ключ GigaChat не предоставлены, AI выключен. Не проверены физические устройства/проектор, сети РФ, нагрузка200–300/p95, native backup/restore. Полный npm ci сообщает 9 dev-toolchain audit findings (4 moderate/5 high); production audit0 не заменяет их разбор до релиза. IMI One не изменять.
