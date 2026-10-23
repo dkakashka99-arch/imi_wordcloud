@@ -9,7 +9,7 @@ export function responseSchema(kind: TaskKind) {
 }
 export function validateResult(kind: TaskKind, value: unknown, snapshot: Snapshot): AiResult {
   const r = resultSchemas[kind].safeParse(value);
-  if (!r.success) throw new AiError('invalid_response');
+  if (!r.success) throw new AiError('invalid_response', 'RESULT_SCHEMA');
   const words = new Map(snapshot.words.map((w) => [w.text, w]));
   const output = r.data;
   if (kind === 'aliases' && 'suggestions' in output) {
@@ -20,9 +20,10 @@ export function validateResult(kind: TaskKind, value: unknown, snapshot: Snapsho
         !item.source.includes(item.suggestedCanonical) ||
         new Set(item.source).size !== item.source.length
       )
-        throw new AiError('invalid_response');
+        throw new AiError('invalid_response', 'ALIAS_CANONICAL_OR_DUPLICATE');
       for (const word of item.source) {
-        if (!words.has(word) || used.has(word)) throw new AiError('invalid_response');
+        if (!words.has(word) || used.has(word))
+          throw new AiError('invalid_response', 'ALIAS_UNKNOWN_OR_OVERLAP');
         used.add(word);
       }
     }
