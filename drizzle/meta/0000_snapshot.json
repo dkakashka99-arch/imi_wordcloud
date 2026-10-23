@@ -1,5 +1,5 @@
 {
-  "id": "3c529cf3-9d91-485c-8d42-c5a7921c8d5b",
+  "id": "54f68ad2-5615-4cc4-a15d-802fb68d0275",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -15,8 +15,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "eventId": {
-          "name": "eventId",
+        "event_id": {
+          "name": "event_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -36,12 +36,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "audiences_eventId_events_id_fk": {
-          "name": "audiences_eventId_events_id_fk",
+        "audiences_event_id_events_id_fk": {
+          "name": "audiences_event_id_events_id_fk",
           "tableFrom": "audiences",
           "tableTo": "events",
           "columnsFrom": [
-            "eventId"
+            "event_id"
           ],
           "columnsTo": [
             "id"
@@ -52,20 +52,20 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "audiences_eventId_key_unique": {
-          "name": "audiences_eventId_key_unique",
+        "audiences_event_id_key_unique": {
+          "name": "audiences_event_id_key_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "eventId",
+            "event_id",
             "key"
           ]
         },
-        "audiences_id_eventId_unique": {
-          "name": "audiences_id_eventId_unique",
+        "audiences_id_event_id_unique": {
+          "name": "audiences_id_event_id_unique",
           "nullsNotDistinct": false,
           "columns": [
             "id",
-            "eventId"
+            "event_id"
           ]
         }
       },
@@ -103,8 +103,8 @@
           "notNull": true,
           "default": false
         },
-        "createdAt": {
-          "name": "createdAt",
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -138,20 +138,20 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "eventId": {
-          "name": "eventId",
+        "event_id": {
+          "name": "event_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "cookieHash": {
-          "name": "cookieHash",
+        "cookie_hash": {
+          "name": "cookie_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "createdAt": {
-          "name": "createdAt",
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -160,12 +160,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "participants_eventId_events_id_fk": {
-          "name": "participants_eventId_events_id_fk",
+        "participants_event_id_events_id_fk": {
+          "name": "participants_event_id_events_id_fk",
           "tableFrom": "participants",
           "tableTo": "events",
           "columnsFrom": [
-            "eventId"
+            "event_id"
           ],
           "columnsTo": [
             "id"
@@ -176,20 +176,20 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "participants_eventId_cookieHash_unique": {
-          "name": "participants_eventId_cookieHash_unique",
+        "participants_event_id_cookie_hash_unique": {
+          "name": "participants_event_id_cookie_hash_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "eventId",
-            "cookieHash"
+            "event_id",
+            "cookie_hash"
           ]
         },
-        "participants_id_eventId_unique": {
-          "name": "participants_id_eventId_unique",
+        "participants_id_event_id_unique": {
+          "name": "participants_id_event_id_unique",
           "nullsNotDistinct": false,
           "columns": [
             "id",
-            "eventId"
+            "event_id"
           ]
         }
       },
@@ -208,20 +208,20 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "eventId": {
-          "name": "eventId",
+        "event_id": {
+          "name": "event_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "questionId": {
-          "name": "questionId",
+        "question_id": {
+          "name": "question_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "audienceId": {
-          "name": "audienceId",
+        "audience_id": {
+          "name": "audience_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -234,34 +234,51 @@
           "default": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "one_active_question_per_audience": {
+          "name": "one_active_question_per_audience",
+          "columns": [
+            {
+              "expression": "audience_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"question_audiences\".\"active\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "question_audiences_questionId_eventId_questions_id_eventId_fk": {
-          "name": "question_audiences_questionId_eventId_questions_id_eventId_fk",
+        "question_audiences_question_id_event_id_questions_id_event_id_fk": {
+          "name": "question_audiences_question_id_event_id_questions_id_event_id_fk",
           "tableFrom": "question_audiences",
           "tableTo": "questions",
           "columnsFrom": [
-            "questionId",
-            "eventId"
+            "question_id",
+            "event_id"
           ],
           "columnsTo": [
             "id",
-            "eventId"
+            "event_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "question_audiences_audienceId_eventId_audiences_id_eventId_fk": {
-          "name": "question_audiences_audienceId_eventId_audiences_id_eventId_fk",
+        "question_audiences_audience_id_event_id_audiences_id_event_id_fk": {
+          "name": "question_audiences_audience_id_event_id_audiences_id_event_id_fk",
           "tableFrom": "question_audiences",
           "tableTo": "audiences",
           "columnsFrom": [
-            "audienceId",
-            "eventId"
+            "audience_id",
+            "event_id"
           ],
           "columnsTo": [
             "id",
-            "eventId"
+            "event_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -269,12 +286,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "question_audiences_questionId_audienceId_unique": {
-          "name": "question_audiences_questionId_audienceId_unique",
+        "question_audiences_question_id_audience_id_unique": {
+          "name": "question_audiences_question_id_audience_id_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "questionId",
-            "audienceId"
+            "question_id",
+            "audience_id"
           ]
         }
       },
@@ -293,8 +310,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "eventId": {
-          "name": "eventId",
+        "event_id": {
+          "name": "event_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -313,15 +330,15 @@
           "notNull": true,
           "default": "'draft'"
         },
-        "maxAnswers": {
-          "name": "maxAnswers",
+        "max_answers": {
+          "name": "max_answers",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 3
         },
-        "maxLength": {
-          "name": "maxLength",
+        "max_length": {
+          "name": "max_length",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -344,12 +361,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "questions_eventId_events_id_fk": {
-          "name": "questions_eventId_events_id_fk",
+        "questions_event_id_events_id_fk": {
+          "name": "questions_event_id_events_id_fk",
           "tableFrom": "questions",
           "tableTo": "events",
           "columnsFrom": [
-            "eventId"
+            "event_id"
           ],
           "columnsTo": [
             "id"
@@ -360,12 +377,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "questions_id_eventId_unique": {
-          "name": "questions_id_eventId_unique",
+        "questions_id_event_id_unique": {
+          "name": "questions_id_event_id_unique",
           "nullsNotDistinct": false,
           "columns": [
             "id",
-            "eventId"
+            "event_id"
           ]
         }
       },
@@ -373,13 +390,113 @@
       "checkConstraints": {
         "answer_limit": {
           "name": "answer_limit",
-          "value": "\"questions\".\"maxAnswers\" between 1 and 10"
+          "value": "\"questions\".\"max_answers\" between 1 and 10"
         },
         "length_limit": {
           "name": "length_limit",
-          "value": "\"questions\".\"maxLength\" between 1 and 120"
+          "value": "\"questions\".\"max_length\" between 1 and 120"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.submission_requests": {
+      "name": "submission_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "question_id": {
+          "name": "question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "participant_id": {
+          "name": "participant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "audience_id": {
+          "name": "audience_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canonical_key": {
+          "name": "canonical_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "submission_requests_question_id_questions_id_fk": {
+          "name": "submission_requests_question_id_questions_id_fk",
+          "tableFrom": "submission_requests",
+          "tableTo": "questions",
+          "columnsFrom": [
+            "question_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "submission_requests_participant_id_participants_id_fk": {
+          "name": "submission_requests_participant_id_participants_id_fk",
+          "tableFrom": "submission_requests",
+          "tableTo": "participants",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "submission_requests_audience_id_audiences_id_fk": {
+          "name": "submission_requests_audience_id_audiences_id_fk",
+          "tableFrom": "submission_requests",
+          "tableTo": "audiences",
+          "columnsFrom": [
+            "audience_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "submission_requests_question_id_participant_id_idempotency_key_unique": {
+          "name": "submission_requests_question_id_participant_id_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "question_id",
+            "participant_id",
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.submissions": {
@@ -393,44 +510,44 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "eventId": {
-          "name": "eventId",
+        "event_id": {
+          "name": "event_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "questionId": {
-          "name": "questionId",
+        "question_id": {
+          "name": "question_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "audienceId": {
-          "name": "audienceId",
+        "audience_id": {
+          "name": "audience_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "participantId": {
-          "name": "participantId",
+        "participant_id": {
+          "name": "participant_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "originalText": {
-          "name": "originalText",
+        "original_text": {
+          "name": "original_text",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "canonicalKey": {
-          "name": "canonicalKey",
+        "canonical_key": {
+          "name": "canonical_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "idempotencyKey": {
-          "name": "idempotencyKey",
+        "idempotency_key": {
+          "name": "idempotency_key",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -442,64 +559,92 @@
           "notNull": true,
           "default": true
         },
-        "isDemo": {
-          "name": "isDemo",
+        "is_demo": {
+          "name": "is_demo",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
         },
-        "createdAt": {
-          "name": "createdAt",
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "submission_cloud_lookup": {
+          "name": "submission_cloud_lookup",
+          "columns": [
+            {
+              "expression": "question_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "audience_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "approved",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "submissions_questionId_eventId_questions_id_eventId_fk": {
-          "name": "submissions_questionId_eventId_questions_id_eventId_fk",
+        "submissions_question_id_event_id_questions_id_event_id_fk": {
+          "name": "submissions_question_id_event_id_questions_id_event_id_fk",
           "tableFrom": "submissions",
           "tableTo": "questions",
           "columnsFrom": [
-            "questionId",
-            "eventId"
+            "question_id",
+            "event_id"
           ],
           "columnsTo": [
             "id",
-            "eventId"
+            "event_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "submissions_audienceId_eventId_audiences_id_eventId_fk": {
-          "name": "submissions_audienceId_eventId_audiences_id_eventId_fk",
+        "submissions_audience_id_event_id_audiences_id_event_id_fk": {
+          "name": "submissions_audience_id_event_id_audiences_id_event_id_fk",
           "tableFrom": "submissions",
           "tableTo": "audiences",
           "columnsFrom": [
-            "audienceId",
-            "eventId"
+            "audience_id",
+            "event_id"
           ],
           "columnsTo": [
             "id",
-            "eventId"
+            "event_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "submissions_participantId_eventId_participants_id_eventId_fk": {
-          "name": "submissions_participantId_eventId_participants_id_eventId_fk",
+        "submissions_participant_id_event_id_participants_id_event_id_fk": {
+          "name": "submissions_participant_id_event_id_participants_id_event_id_fk",
           "tableFrom": "submissions",
           "tableTo": "participants",
           "columnsFrom": [
-            "participantId",
-            "eventId"
+            "participant_id",
+            "event_id"
           ],
           "columnsTo": [
             "id",
-            "eventId"
+            "event_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -507,22 +652,22 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "submissions_questionId_participantId_canonicalKey_unique": {
-          "name": "submissions_questionId_participantId_canonicalKey_unique",
+        "submissions_question_id_participant_id_canonical_key_unique": {
+          "name": "submissions_question_id_participant_id_canonical_key_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "questionId",
-            "participantId",
-            "canonicalKey"
+            "question_id",
+            "participant_id",
+            "canonical_key"
           ]
         },
-        "submissions_questionId_participantId_idempotencyKey_unique": {
-          "name": "submissions_questionId_participantId_idempotencyKey_unique",
+        "submissions_question_id_participant_id_idempotency_key_unique": {
+          "name": "submissions_question_id_participant_id_idempotency_key_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "questionId",
-            "participantId",
-            "idempotencyKey"
+            "question_id",
+            "participant_id",
+            "idempotency_key"
           ]
         }
       },

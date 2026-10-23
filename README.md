@@ -4,7 +4,9 @@
 
 ## Разработка
 
-Node.js 24. `npm ci`, скопировать `.env.example` в `.env`, задать отдельную PostgreSQL БД. Для команд использовать `node --env-file=.env node_modules/tsx/dist/cli.mjs scripts/migrate.ts` и затем `scripts/seed.ts`. `npm run dev`.
+Node.js 24. `npm ci`, скопировать `.env.example` в `.env`, задать отдельную PostgreSQL БД. Миграция: `node --env-file=.env --import tsx scripts/migrate.ts`; затем аналогично `scripts/seed.ts`. `npm run dev`. Seed повторно не перезаписывает мероприятие и не удаляет ответы.
+
+Локальный тестовый стенд без системного PostgreSQL: `npm run build` → `npm run test:local`. Он создаёт одноразовую БД PGlite (PostgreSQL WASM), применяет настоящую миграцию, проверяет сервис и HTTP. Это не production и не подтверждение поведения многопроцессного PostgreSQL.
 
 Проверки: `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:integration`, `npm run build`. Integration требует выделенную тестовую БД, никогда не production.
 
