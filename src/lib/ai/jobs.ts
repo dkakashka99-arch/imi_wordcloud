@@ -192,6 +192,13 @@ export async function startAnalysis(
         data.words.map((w) => w.text),
       ),
     );
+    // Rejected results may still consume tokens. Keep usage and the returned
+    // model version before validation, without persisting raw model output.
+    await c.query('UPDATE ai_jobs SET usage=$2::jsonb,model=$3 WHERE id=$1', [
+      jobId,
+      JSON.stringify(output.usage),
+      output.model,
+    ]);
     const result = validateResult(cmd.kind, output.result, data);
     await c.query(
       `UPDATE ai_jobs SET status='completed',result=$2::jsonb,usage=$3::jsonb,finished_at=now() WHERE id=$1`,

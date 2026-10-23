@@ -193,6 +193,7 @@ it('stores safe failure status, rejects fabricated output and keeps public flow 
     expect(state.jobs.find((j) => j.id === job.id)).toMatchObject({
       status: 'failed',
       error: failure,
+      usage: failure === 'invalid_response' ? { total_tokens: 12 } : null,
     });
     await submit(f.slug, 'all', randomUUID(), {
       questionId: f.q,
