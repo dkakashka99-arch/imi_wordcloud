@@ -1,0 +1,556 @@
+{
+  "id": "3c529cf3-9d91-485c-8d42-c5a7921c8d5b",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.audiences": {
+      "name": "audiences",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "eventId": {
+          "name": "eventId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "audiences_eventId_events_id_fk": {
+          "name": "audiences_eventId_events_id_fk",
+          "tableFrom": "audiences",
+          "tableTo": "events",
+          "columnsFrom": [
+            "eventId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "audiences_eventId_key_unique": {
+          "name": "audiences_eventId_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "eventId",
+            "key"
+          ]
+        },
+        "audiences_id_eventId_unique": {
+          "name": "audiences_id_eventId_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "eventId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.events": {
+      "name": "events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archived": {
+          "name": "archived",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "events_slug_unique": {
+          "name": "events_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.participants": {
+      "name": "participants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "eventId": {
+          "name": "eventId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cookieHash": {
+          "name": "cookieHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "participants_eventId_events_id_fk": {
+          "name": "participants_eventId_events_id_fk",
+          "tableFrom": "participants",
+          "tableTo": "events",
+          "columnsFrom": [
+            "eventId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "participants_eventId_cookieHash_unique": {
+          "name": "participants_eventId_cookieHash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "eventId",
+            "cookieHash"
+          ]
+        },
+        "participants_id_eventId_unique": {
+          "name": "participants_id_eventId_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "eventId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.question_audiences": {
+      "name": "question_audiences",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "eventId": {
+          "name": "eventId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionId": {
+          "name": "questionId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "audienceId": {
+          "name": "audienceId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "question_audiences_questionId_eventId_questions_id_eventId_fk": {
+          "name": "question_audiences_questionId_eventId_questions_id_eventId_fk",
+          "tableFrom": "question_audiences",
+          "tableTo": "questions",
+          "columnsFrom": [
+            "questionId",
+            "eventId"
+          ],
+          "columnsTo": [
+            "id",
+            "eventId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "question_audiences_audienceId_eventId_audiences_id_eventId_fk": {
+          "name": "question_audiences_audienceId_eventId_audiences_id_eventId_fk",
+          "tableFrom": "question_audiences",
+          "tableTo": "audiences",
+          "columnsFrom": [
+            "audienceId",
+            "eventId"
+          ],
+          "columnsTo": [
+            "id",
+            "eventId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "question_audiences_questionId_audienceId_unique": {
+          "name": "question_audiences_questionId_audienceId_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "questionId",
+            "audienceId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.questions": {
+      "name": "questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "eventId": {
+          "name": "eventId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "question_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "maxAnswers": {
+          "name": "maxAnswers",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 3
+        },
+        "maxLength": {
+          "name": "maxLength",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 60
+        },
+        "revision": {
+          "name": "revision",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "questions_eventId_events_id_fk": {
+          "name": "questions_eventId_events_id_fk",
+          "tableFrom": "questions",
+          "tableTo": "events",
+          "columnsFrom": [
+            "eventId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "questions_id_eventId_unique": {
+          "name": "questions_id_eventId_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "eventId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "answer_limit": {
+          "name": "answer_limit",
+          "value": "\"questions\".\"maxAnswers\" between 1 and 10"
+        },
+        "length_limit": {
+          "name": "length_limit",
+          "value": "\"questions\".\"maxLength\" between 1 and 120"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.submissions": {
+      "name": "submissions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "eventId": {
+          "name": "eventId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionId": {
+          "name": "questionId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "audienceId": {
+          "name": "audienceId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "participantId": {
+          "name": "participantId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "originalText": {
+          "name": "originalText",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canonicalKey": {
+          "name": "canonicalKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotencyKey": {
+          "name": "idempotencyKey",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved": {
+          "name": "approved",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "isDemo": {
+          "name": "isDemo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "submissions_questionId_eventId_questions_id_eventId_fk": {
+          "name": "submissions_questionId_eventId_questions_id_eventId_fk",
+          "tableFrom": "submissions",
+          "tableTo": "questions",
+          "columnsFrom": [
+            "questionId",
+            "eventId"
+          ],
+          "columnsTo": [
+            "id",
+            "eventId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "submissions_audienceId_eventId_audiences_id_eventId_fk": {
+          "name": "submissions_audienceId_eventId_audiences_id_eventId_fk",
+          "tableFrom": "submissions",
+          "tableTo": "audiences",
+          "columnsFrom": [
+            "audienceId",
+            "eventId"
+          ],
+          "columnsTo": [
+            "id",
+            "eventId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "submissions_participantId_eventId_participants_id_eventId_fk": {
+          "name": "submissions_participantId_eventId_participants_id_eventId_fk",
+          "tableFrom": "submissions",
+          "tableTo": "participants",
+          "columnsFrom": [
+            "participantId",
+            "eventId"
+          ],
+          "columnsTo": [
+            "id",
+            "eventId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "submissions_questionId_participantId_canonicalKey_unique": {
+          "name": "submissions_questionId_participantId_canonicalKey_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "questionId",
+            "participantId",
+            "canonicalKey"
+          ]
+        },
+        "submissions_questionId_participantId_idempotencyKey_unique": {
+          "name": "submissions_questionId_participantId_idempotencyKey_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "questionId",
+            "participantId",
+            "idempotencyKey"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.question_status": {
+      "name": "question_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "open",
+        "paused",
+        "closed"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
