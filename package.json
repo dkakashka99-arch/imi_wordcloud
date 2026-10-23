@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
-    "build": "next build --webpack",
+    "build": "node scripts/build.mjs",
     "start": "next start --hostname 0.0.0.0",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -21,7 +21,8 @@
     "test:http": "node --import tsx scripts/check-http.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "admin:create": "node --import tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",

@@ -40,7 +40,8 @@ export default function Home() {
       </section>
       <footer className="footer">
         Участие без регистрации · Короткие слова и фразы ·{' '}
-        <Link href="/e/mir-27-oct/screen">Экран мероприятия</Link>
+        <Link href="/e/mir-27-oct/screen">Экран мероприятия</Link> ·{' '}
+        <Link href="/admin">Организаторам</Link>
       </footer>
     </main>
   );

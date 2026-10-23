@@ -9,6 +9,7 @@ export function Participant({ slug, audience }: { slug: string; audience: string
     [notice, setNotice] = useState(''),
     [sending, setSending] = useState(false);
   const mutationVersion = useRef(0);
+  const currentQuestion = useRef<string | null>(null);
   const pending = useRef<{ text: string; questionId: string; idempotencyKey: string } | null>(null);
   const endpoint = `/api/public/events/${encodeURIComponent(slug)}/${encodeURIComponent(audience)}`;
   useEffect(() => {
@@ -20,8 +21,23 @@ export function Participant({ slug, audience }: { slug: string; audience: string
       try {
         const response = await fetch(endpoint, { cache: 'no-store' });
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Не удалось загрузить вопрос.');
+        if (!response.ok) {
+          if (live && response.status === 404) {
+            setData(null);
+            currentQuestion.current = null;
+            setText('');
+            setNotice('');
+          }
+          throw new Error(result.error || 'Не удалось загрузить вопрос.');
+        }
         if (live && version === mutationVersion.current) {
+          const nextQuestion = result.question?.id ?? null;
+          if (currentQuestion.current !== nextQuestion) {
+            currentQuestion.current = nextQuestion;
+            setText('');
+            setNotice('');
+            pending.current = null;
+          }
           setData(result);
           setError('');
         }

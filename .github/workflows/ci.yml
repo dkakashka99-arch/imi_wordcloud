@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [develop, main, 'feature/**', 'fix/**']
+    branches: [develop, main]
   pull_request:
     branches: [develop, main]
 permissions:
@@ -9,6 +9,7 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine
@@ -40,6 +41,7 @@ jobs:
       - run: npm run build
       - run: npm run test:http
       - run: npx playwright install --with-deps chromium webkit
+        timeout-minutes: 8
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()

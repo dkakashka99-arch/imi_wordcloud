@@ -141,3 +141,28 @@ export const submissionRequests = pgTable(
   },
   (t) => [unique().on(t.questionId, t.participantId, t.idempotencyKey)],
 );
+
+export const admins = pgTable('admins', {
+  id: uuid().defaultRandom().primaryKey(),
+  login: text().notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  active: boolean().default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const adminSessions = pgTable(
+  'admin_sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => admins.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('admin_session_expiry').on(t.expiresAt)],
+);
+export const loginLimits = pgTable('login_limits', {
+  key: text().primaryKey(),
+  attempts: integer().notNull(),
+  resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
+});

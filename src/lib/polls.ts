@@ -17,9 +17,10 @@ async function context(
   slug: string,
   audience: string,
   client: QueryClient = database(),
+  lockEvent = false,
 ): Promise<Context> {
   const result = await client.query<Context>(
-    `SELECT e.id event_id,e.title,e.slug,a.id audience_id,a.key audience_key,a.label FROM events e JOIN audiences a ON a.event_id=e.id WHERE e.slug=$1 AND a.key=$2 AND NOT e.archived`,
+    `SELECT e.id event_id,e.title,e.slug,a.id audience_id,a.key audience_key,a.label FROM events e JOIN audiences a ON a.event_id=e.id WHERE e.slug=$1 AND a.key=$2 AND NOT e.archived${lockEvent ? ' FOR SHARE OF e' : ''}`,
     [slug, audience],
   );
   if (!result.rows[0]) throw new HttpError(404, 'Мероприятие или группа не найдены.');
@@ -66,7 +67,7 @@ export async function submit(
   const client = await database().connect();
   try {
     await client.query('BEGIN');
-    const ctx = await context(slug, audience, client);
+    const ctx = await context(slug, audience, client, true);
     // Question lock serializes state transitions, quota checks and revision increments.
     const qr = await client.query(
       `SELECT q.* FROM questions q JOIN question_audiences qa ON qa.question_id=q.id WHERE q.id=$1 AND q.event_id=$2 AND qa.audience_id=$3 FOR UPDATE OF q`,
