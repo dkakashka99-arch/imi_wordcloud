@@ -1,20 +1,19 @@
 # Checkpoint — 23.10.2026
 
-## Подтверждённое состояние
+## Подтверждённая поставка
 
-- Отдельный приватный репозиторий: `salakal/imi-wordcloud`, права admin/push подтверждены.
-- Исходный пользовательский main `8b843f88119266d08465377b4bb2dee8aec5e00a` сохранён. Main не используется для разработки/публикации без release gate.
-- Bootstrap перенесён через GitHub API без CLI credentials. Точное содержимое соответствует локальному a24bc7e; remote commit `7d08285e791352cf6db5fe8e4a9570e88698b8bb`.
-- PR #1: https://github.com/salakal/imi-wordcloud/pull/1 . CI run 39927960811 завершён success. Merge в develop: `2e60451157efe838eb48ecc9104836975dd5c05e`.
-- Основной поток локально: lint/typecheck/build, 3 unit, 8 integration и HTTP/QR/restart Next.js на PGlite прошли. Эти проверки не повторять без причин. Native PostgreSQL/browser gate — следующий незавершённый пункт.
-- Добавлены Playwright-проекты WebKit/iPhone 13 и Chromium/Pixel 7, плюс экран 1920×1080: живое появление ответа без F5, QR, сохранение лимита после reload и пауза. Это эмуляция браузера/viewport, не физические телефоны и не тест сетей РФ.
+- Приватный `salakal/imi-wordcloud`, admin/push подтверждены. Main содержит исходный README (`8b843f88119266d08465377b4bb2dee8aec5e00a`); production не опубликован.
+- Шаг 0: https://github.com/salakal/imi-wordcloud/pull/1 . CI 39927960811 success; merge в develop `2e60451157efe838eb48ecc9104836975dd5c05e`.
+- Шаг 1: https://github.com/salakal/imi-wordcloud/pull/2 . Проверенный implementation head `648f11fba5e3b9443738141eafd7ea30ec6a4b67`; исходное дерево a937087ba2e1855c15c04b136738f116f5c011c8 соответствует локальному source d80fafb.
+- Полный native CI https://github.com/salakal/imi-wordcloud/actions/runs/39928395171 завершён success: lint/typecheck, 3 unit, миграция PostgreSQL 17, 8 integration, production build, HTTP/QR/restart приложения и 2 browser E2E. Chromium live update: 4377 мс; WebKit: 3880 мс. Детали/ограничения — TEST_REPORT.md.
+- После проверенного implementation head добавляется только этот отчёт, TASKS/TEST_REPORT/CHANGELOG; код приложения и тестов не меняется. Перед финальным merge подтвердить CI актуальной головы PR #2 и expected_head_sha; не считать неизменяемым старый SHA.
 
-## Следующее действие
+## Первое незавершённое действие
 
-Перенести текущий feature/01-core-flow отдельным коммитом через GitHub tree/commit API на основе develop, открыть PR и пройти native PostgreSQL 17 + browser CI. Фиксировать реальные ошибки и исправлять, не ослаблять проверки. После зелёной актуальной головы PR — merge в develop и обновление отчёта фактическими результатами.
+Если PR #2 ещё открыт — завершить поставку после зелёной актуальной головы. Если слит — не повторять выполненные проверки и перейти к шагу 2: серверная админская авторизация/сессии, создание первого админа, CRUD мероприятий/аудиторий/вопросов, активный вопрос и архив. Выполнить проверку реального разрешённого и запрещённого доступа и E2E управления мероприятиями.
 
-Из-за отсутствия CLI GitHub credentials локальные source commits и remote API commits имеют разные SHA. Не выдавать один за другой. Сопоставлять содержимое деревьев и пользоваться актуальными remote head SHA для update_ref с expected_sha и merge с expected_head_sha. Локальная исходная история сохранена в ранее переданном bundle; в репозитории сохраняется пользовательский initial commit и новая история feature PR. Force push main/develop запрещён.
+Состояние merge/новейший remote commit получать из GitHub, а не предполагать по сохранённому source commit. CLI GitHub credentials отсутствуют, поэтому для записи используются GitHub tree/commit/ref tools; update_ref только с актуальным expected_sha и без force. Локальные и remote SHA различаются; сравнивать деревья. История исходных локальных веток сохранена в ранее переданном bundle, GitHub сохраняет исходный initial commit и feature PR историю.
 
-## Дальнейшие этапы и внешние условия
+## Незакрытые условия релиза
 
-Следующий функциональный этап: шаг 2 — админские сессии/CRUD, затем модерация/экспорт, GigaChat и российский deployment. VPS/домен не предоставлены; покупок не было. GigaChat выключен, ключ не предоставлен, пригодность Freemium не подтверждена, клиент ещё не реализован. Production release требует финального подтверждения по SPEC.md. IMI One не используется.
+VPS в России/домен ещё не предоставлены; покупок не было. GigaChat выключен, ключ отсутствует, пригодность Freemium не подтверждена и клиент ещё не реализован. Physical iPhone/Android, сети РФ без VPN, 200–300 участников/p95, restart PostgreSQL и backup/restore — не проверены. Dev-toolchain audit findings требуют разбора, production dependency audit — 0. Production release требует финального подтверждения по SPEC.md. IMI One не используется.

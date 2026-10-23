@@ -10,4 +10,6 @@
 - Origin/Zod/ограничение размера JSON, транзакции, недоступность сырых ответов в публичном API.
 - CI для обычного PostgreSQL; локальный тестовый WASM-стенд, unit/integration/HTTP проверки.
 
+CI в GitHub подтверждён на PostgreSQL 17, а также в Chromium/Pixel 7 и WebKit/iPhone 13; появление слова на live-экране — 4,38 и 3,88 секунды в CI.
+
 Это промежуточная версия; админка, AI, публичный deployment и release не выполнены.

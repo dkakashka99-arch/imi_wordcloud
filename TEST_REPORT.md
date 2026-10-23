@@ -10,7 +10,7 @@
 | `npm run build`                            | PASS, production standalone                                                                                     |
 | `npm run test:local`                       | PASS: миграция Drizzle + повторный seed + 8 integration tests + реальный HTTP flow и перезапуск приложения      |
 | `npm audit --omit=dev --audit-level=high`  | PASS, 0 vulnerabilities                                                                                         |
-| PostgreSQL 17 в GitHub Actions             | Шаг 0: CI успешно пройден, PR #1 слит. Integration/HTTP шага 1 запускаются отдельным PR                         |
+| PostgreSQL 17 в GitHub Actions             | PASS, CI run 39928395171: миграция, 8 integration tests и HTTP на native PostgreSQL 17                          |
 | Playwright / iPhone / Android              | НЕ ПРОВЕРЕНО                                                                                                    |
 | 200–300 участников, p95                    | НЕ ПРОВЕРЕНО                                                                                                    |
 | Российские сети без VPN                    | НЕ ПРОВЕРЕНО: публичного сервера нет                                                                            |
@@ -23,7 +23,7 @@ Cookie случайного участника → строгая Zod-прове
 
 ## Существенное ограничение
 
-Локальная БД — PGlite 0.5.11 через PostgreSQL wire protocol, **только тестовый стенд**. Pool ограничен одним соединением; одновременные запросы вызываются, но реальное поведение блокировок и конкурентность native PostgreSQL этим не подтверждены. В CI подготовлен PostgreSQL 17 с обычным пулом, но CI пока не запускался. Production-код подключается к PostgreSQL через pg; fallback в WASM, SQLite, файлы или RAM в runtime отсутствует.
+Локальная БД — PGlite 0.5.11 через PostgreSQL wire protocol, **только тестовый стенд**. Pool ограничен одним соединением; одновременные запросы вызываются, но реальное поведение блокировок и конкурентность native PostgreSQL этим не подтверждены. Дополнительно GitHub Actions run 39928395171 успешно проверил native PostgreSQL 17 с обычным пулом; локальная WASM-проверка больше не является единственным доказательством. Production-код подключается к PostgreSQL через pg; fallback в WASM, SQLite, файлы или RAM в runtime отсутствует.
 
 В тестовом socket-стенде обнаружена проблема восстановления соединения после SQL constraint error вне транзакции. Проверка unique constraint теперь явно выполняет BEGIN/ROLLBACK; ограничение БД по-прежнему проверяется. Это не исправление и не доказательство поведения native PostgreSQL.
 
@@ -31,4 +31,12 @@ Cookie случайного участника → строгая Zod-прове
 
 ## Поставка в GitHub
 
-Репозиторий: https://github.com/salakal/imi-wordcloud (private). Bootstrap PR: https://github.com/salakal/imi-wordcloud/pull/1 ; успешный CI run 39927960811, head 7d08285e791352cf6db5fe8e4a9570e88698b8bb. Слит в develop: 2e60451157efe838eb48ecc9104836975dd5c05e. Main содержит только исходный README. Основной поток и browser E2E ещё проходят отдельный gate.
+Репозиторий: https://github.com/salakal/imi-wordcloud (private). Bootstrap PR: https://github.com/salakal/imi-wordcloud/pull/1 ; успешный CI run 39927960811, head 7d08285e791352cf6db5fe8e4a9570e88698b8bb. Слит в develop: 2e60451157efe838eb48ecc9104836975dd5c05e. Main содержит только исходный README. Основной поток: https://github.com/salakal/imi-wordcloud/pull/2 ; head 648f11fba5e3b9443738141eafd7ea30ec6a4b67. Полный CI run 39928395171: success.
+
+## Native PostgreSQL и браузеры — подтверждённые результаты
+
+- Workflow: https://github.com/salakal/imi-wordcloud/actions/runs/39928395171 ; job 120330334488.
+- lint/typecheck/unit (3), db:migrate, integration (8), production build, standalone HTTP/QR/restart, browser E2E (2), production audit: PASS.
+- Chromium/Pixel 7: появление слова без F5 за 4377 мс; WebKit/iPhone 13: 3880 мс. Два измерения в CI/development-сервере не являются p95 и не подтверждают задержку из российских сетей.
+- Browser E2E проверяет настоящий submit, общий экран 1920×1080, QR, отсутствие горизонтального overflow, сохранение лимита после reload и паузу. Браузерный сервер — Next.js dev, production standalone проверяется отдельно HTTP smoke; настоящий production HTTPS ещё не поднят.
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities в production-зависимостях. `npm ci` также сообщил 9 находок dev-зависимостей (4 moderate, 5 high); они не включены в production audit и требуют отдельного разбора до релиза. Не трактовать production audit как отсутствие любых находок во всём dev-toolchain.
