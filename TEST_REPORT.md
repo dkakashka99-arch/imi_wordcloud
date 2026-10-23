@@ -10,7 +10,7 @@
 | `npm run build`                            | PASS, production standalone                                                                                     |
 | `npm run test:local`                       | PASS: миграция Drizzle + повторный seed + 8 integration tests + реальный HTTP flow и перезапуск приложения      |
 | `npm audit --omit=dev --audit-level=high`  | PASS, 0 vulnerabilities                                                                                         |
-| PostgreSQL 17 в GitHub Actions             | НЕ ЗАПУСКАЛОСЬ: нет отдельного remote repo                                                                      |
+| PostgreSQL 17 в GitHub Actions             | Шаг 0: CI успешно пройден, PR #1 слит. Integration/HTTP шага 1 запускаются отдельным PR                         |
 | Playwright / iPhone / Android              | НЕ ПРОВЕРЕНО                                                                                                    |
 | 200–300 участников, p95                    | НЕ ПРОВЕРЕНО                                                                                                    |
 | Российские сети без VPN                    | НЕ ПРОВЕРЕНО: публичного сервера нет                                                                            |
@@ -28,3 +28,7 @@ Cookie случайного участника → строгая Zod-прове
 В тестовом socket-стенде обнаружена проблема восстановления соединения после SQL constraint error вне транзакции. Проверка unique constraint теперь явно выполняет BEGIN/ROLLBACK; ограничение БД по-прежнему проверяется. Это не исправление и не доказательство поведения native PostgreSQL.
 
 Статусы сборки и тестов не означают готовность релиза: админка, модерация через UI, CSV, GigaChat, deployment и полная репетиция ещё не реализованы.
+
+## Поставка в GitHub
+
+Репозиторий: https://github.com/salakal/imi-wordcloud (private). Bootstrap PR: https://github.com/salakal/imi-wordcloud/pull/1 ; успешный CI run 39927960811, head 7d08285e791352cf6db5fe8e4a9570e88698b8bb. Слит в develop: 2e60451157efe838eb48ecc9104836975dd5c05e. Main содержит только исходный README. Основной поток и browser E2E ещё проходят отдельный gate.

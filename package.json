@@ -20,7 +20,8 @@
     "test:local": "node --import tsx scripts/check-local.ts",
     "test:http": "node --import tsx scripts/check-http.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",

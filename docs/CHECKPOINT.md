@@ -1,21 +1,20 @@
 # Checkpoint — 23.10.2026
 
-## Точка продолжения
+## Подтверждённое состояние
 
-Ветка `feature/01-core-flow`, на основе bootstrap `5be4f65`. Последний подтверждённый результат: production standalone собран, lint/typecheck пройдены, 3 unit и 8 integration тестов, HTTP flow (включая QR, pause и restart Next.js) успешно проверены на PGlite. `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities. Подробности и ограничения — TEST_REPORT.md.
+- Отдельный приватный репозиторий: `salakal/imi-wordcloud`, права admin/push подтверждены.
+- Исходный пользовательский main `8b843f88119266d08465377b4bb2dee8aec5e00a` сохранён. Main не используется для разработки/публикации без release gate.
+- Bootstrap перенесён через GitHub API без CLI credentials. Точное содержимое соответствует локальному a24bc7e; remote commit `7d08285e791352cf6db5fe8e4a9570e88698b8bb`.
+- PR #1: https://github.com/salakal/imi-wordcloud/pull/1 . CI run 39927960811 завершён success. Merge в develop: `2e60451157efe838eb48ecc9104836975dd5c05e`.
+- Основной поток локально: lint/typecheck/build, 3 unit, 8 integration и HTTP/QR/restart Next.js на PGlite прошли. Эти проверки не повторять без причин. Native PostgreSQL/browser gate — следующий незавершённый пункт.
+- Добавлены Playwright-проекты WebKit/iPhone 13 и Chromium/Pixel 7, плюс экран 1920×1080: живое появление ответа без F5, QR, сохранение лимита после reload и пауза. Это эмуляция браузера/viewport, не физические телефоны и не тест сетей РФ.
 
-Локальные main/develop указывают на стартовый пустой commit. Ничего не опубликовано и не слито. Не считать local commit готовым PR или успешным CI. Feature 00 содержит отдельное исправление skeleton CI: на bootstrap запускаются только существующие unit/build проверки. Полная CI-конфигурация feature 01 дополнительно запускает миграции и реальные integration/HTTP тесты.
+## Следующее действие
 
-## Первый незавершённый пункт
+Перенести текущий feature/01-core-flow отдельным коммитом через GitHub tree/commit API на основе develop, открыть PR и пройти native PostgreSQL 17 + browser CI. Фиксировать реальные ошибки и исправлять, не ослаблять проверки. После зелёной актуальной головы PR — merge в develop и обновление отчёта фактическими результатами.
 
-GitHub: подключён salakal; отдельный repo mir-wordcloud не найден. Создание repo не поддержано коннектором; CLI credentials отсутствуют; browser требует login. Нужен пустой private `salakal/mir-wordcloud`, доступный коннектору. После получения repo агент сам переносит Git-историю/код, создаёт ветки и PR и запускает подготовленные проверки на native PostgreSQL 17. Не использовать IMI One.
+Из-за отсутствия CLI GitHub credentials локальные source commits и remote API commits имеют разные SHA. Не выдавать один за другой. Сопоставлять содержимое деревьев и пользоваться актуальными remote head SHA для update_ref с expected_sha и merge с expected_head_sha. Локальная исходная история сохранена в ранее переданном bundle; в репозитории сохраняется пользовательский initial commit и новая история feature PR. Force push main/develop запрещён.
 
-До репозитория этапы 0 и 1 имеют статус PARTIAL. После поставки и исправления реальных CI ошибок: browser E2E и шаг 2 (админские сессии/CRUD). Не повторять общий аудит проекта и успешно пройденные unit/build проверки без изменений кода. Native PostgreSQL concurrency, browser UI и российские сети ранее не проверялись.
+## Дальнейшие этапы и внешние условия
 
-## Остальные внешние условия
-
-Российский VPS/домен ещё не предоставлены; никаких покупок не было. GigaChat выключен, ключ не предоставлен, пригодность Freemium не подтверждена; клиент GigaChat ещё не реализован. Production release требует финального подтверждения по SPEC.md.
-
-## Восстановление
-
-Архив поставки содержит tracked source и Git bundle всех локальных веток в `.history/mir-wordcloud.bundle`. Использовать bundle для восстановления истории, если временный checkout исчезнет. Файл bundle в самом Git не хранится. Продолжать существующие ветки, не пересоздавать реализацию. Не восстанавливать старую camelCase миграцию: актуальный baseline — `drizzle/0000_clean_changeling.sql`, нигде в production ещё не применён.
+Следующий функциональный этап: шаг 2 — админские сессии/CRUD, затем модерация/экспорт, GigaChat и российский deployment. VPS/домен не предоставлены; покупок не было. GigaChat выключен, ключ не предоставлен, пригодность Freemium не подтверждена, клиент ещё не реализован. Production release требует финального подтверждения по SPEC.md. IMI One не используется.
