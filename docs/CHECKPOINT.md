@@ -1,17 +1,17 @@
-# Checkpoint — этап 4 GigaChat, 23.10.2026
+# Checkpoint — GigaChat готов, стабилизация CI, 23.10.2026
 
-Репозиторий https://github.com/dkakashka99-arch/imi_wordcloud, devwork. Перенос завершён, не повторять. Старый salakal сохранён, карта docs/MIGRATION.md. IMI One не изменять. Локальные/API SHA различаются: сверять tree, без force push.
+Репозиторий https://github.com/dkakashka99-arch/imi_wordcloud, devwork. Перенос завершён, старый salakal сохранён, карта docs/MIGRATION.md. IMI One не менять. API/local SHA различаются, сверять tree, без force push.
 
-Этапы0–3 DONE, develop до этапа4:08aa19b24fc89ec3d092d7b9b728a8d1af5bf1d0, CI39987056531 SUCCESS.
+Этапы0–4 реализованы. PR #3 слит в develop e2aee9fb001cfd304d34539d4cf9a8cc18d9af34, tree6ebf15ce1a642781ca237c22dad7f506eafaee55 совпал с проверенным. Финальный PR CI39994992637 attempt2 SUCCESS на004235d2737bff845172ece48b427bebcae722d0:12 unit/24 native integration/8 Chromium/WebKit browser, lint/typecheck/build/HTTP/audit0. Attempt1 — только timeout установки пакетов Ubuntu. Реальный smoke39994534955 и повтор после merge39997017054 SUCCESS: OAuth/модели/GigaChat-2, все3 задачи, JSON Schema/семантика/TLS. Только синтетика, секрет агент не читал. Runtime AI выключен по умолчанию; настройка docs/GIGACHAT.md.
 
-Этап4: feature/04-gigachat-ai, PR #3. Реализация/доказательства docs/STEP_04_REPORT.md, настройка docs/GIGACHAT.md. Полный CI39993783572 PASS:12 unit/24 native integration/8 browser, build/HTTP/audit0. Последние enum/лимиты схемы и сохранение usage проходят текущий CI PR до merge.
+## Текущая работа
 
-Ключ добавлен пользователем в Actions Secret GIGACHAT_AUTH_KEY; личный портфолио-проект, PERS. Не читать/не выводить секрет. Smoke39994534955 SUCCESS на f2c04914ff8c631de215dc3fb62ba4855cf7089f: OAuth/модели/GigaChat-2 и все3 задачи с JSON Schema/семантической проверкой/TLS. Только синтетика. Последующие изменения jobs.ts сохраняют usage до валидации, не меняют клиент/промпт/схему реального smoke.
+Develop CI39997016904 attempt1 остановился на восьмиминутном timeout установки Playwright dependencies с azure.archive.ubuntu.com, до browser-тестов; attempt2 запущен без изменения кода. Нет падений приложения. Повторяемая проблема зеркала подтверждается логами и actions/runner-images#14594. Подготовлена fix/ci-ubuntu-mirror: Ubuntu24.04, замена Azure HTTP на официальный archive.ubuntu.com HTTPS только в Ubuntu mirror lists, ограниченные APT timeouts/retries. Проверки TLS/подписей пакетов не ослаблены, все прежние тесты сохранены. Изменения только CI/документации, новый PR в develop.
 
 ## Первое незавершённое действие
 
-Проверить live head PR #3 и полный CI. Если зелёный — merge с expected_head_sha, затем сверить merge tree и develop CI/synthetic smoke. Если PR уже слит и develop зелёный — этап4 завершён, не повторять тесты/вызовы без причины. Следующий этап5: российский VPS/домен; независимые deployment-файлы/инструкции можно подготовить без сервера. При чужих изменениях сначала сверить состояние.
+Найти текущий PR fix/ci-ubuntu-mirror и его head/CI, не создавать дубли. Проверить полный CI, merge с expected_head_sha после PASS; затем сверить tree и develop CI. Если уже слит и develop зелёный — доставка этапа4 завершена, прошлые тесты/реальные API не повторять без причины. Следующий этап5 — российский VPS/домен, независимые deployment-файлы можно подготовить отдельно по разрешению.
 
-## Оставшиеся условия
+## Оставшееся
 
-Main — начальный README, production нет. VPS в России/домен отсутствуют; стоимость согласовать до покупки. Actions Secret не настраивает production; runtime AI выключен по умолчанию. Не проверены физические устройства/проектор, сети РФ, нагрузка200–300/p95, native backup/restore. До релиза разобрать9 dev-toolchain findings (4moderate/5high); production audit0 не заменяет разбор.
+Production нет; main начальный README. Нужны VPS в России/домен, стоимость согласовать до покупки; Actions Secret не настраивает production. Личный портфолио-проект/PERS подтверждены. Не проверены физические устройства/проектор, сети РФ, нагрузка200–300/p95, native backup/restore. Dev audit разобрать до релиза (исторически9 findings; последний npm ci PR CI сообщил4 moderate), production audit0 — отдельная проверка.
