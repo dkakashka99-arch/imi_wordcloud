@@ -258,7 +258,10 @@ export class GigaClient {
     const r = chatSchema.safeParse(body);
     if (!r.success) throw new AiError('invalid_response', 'CHAT_ENVELOPE');
     if (r.data.choices[0].finish_reason && r.data.choices[0].finish_reason !== 'stop')
-      throw new AiError('safety_or_incomplete');
+      throw new AiError(
+        'safety_or_incomplete',
+        r.data.choices[0].finish_reason === 'length' ? 'LENGTH' : 'REFUSAL_OR_OTHER',
+      );
     let result: unknown;
     try {
       result = JSON.parse(r.data.choices[0].message.content);

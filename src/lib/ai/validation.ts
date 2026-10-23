@@ -16,25 +16,29 @@ export function responseSchema(kind: TaskKind, words: string[]) {
   // Constrain generation as well as validating it afterwards. The model must copy
   // selected phrases exactly, rather than inventing a normalized canonical term.
   const word = z.enum(words);
+  const source = z
+    .array(word)
+    .min(2)
+    .max(Math.max(2, Math.min(10, words.length)));
   const schema =
     kind === 'aliases'
       ? aliasResult.extend({
           suggestions: z
             .array(
               aliasResult.shape.suggestions.element.extend({
-                source: z.array(word).min(2).max(10),
+                source,
                 suggestedCanonical: word.describe(
                   'Дословно одно из source этой же группы; не придумывай и не исправляй слова.',
                 ),
               }),
             )
-            .max(30),
+            .max(Math.min(30, Math.floor(words.length / 2))),
         })
       : kind === 'moderation'
         ? moderationResult.extend({
             suggestions: z
               .array(moderationResult.shape.suggestions.element.extend({ word }))
-              .max(30),
+              .max(Math.min(30, words.length)),
           })
         : summaryResult.extend({
             points: z
@@ -51,7 +55,11 @@ export function responseSchema(kind: TaskKind, words: string[]) {
               .min(3)
               .max(5),
           });
-  return z.toJSONSchema(schema);
+  return z.toJSONSchema(schema, {
+    override: (ctx) => {
+      if (ctx.zodSchema === source) ctx.jsonSchema.uniqueItems = true;
+    },
+  });
 }
 export function validateResult(kind: TaskKind, value: unknown, snapshot: Snapshot): AiResult {
   const r = resultSchemas[kind].safeParse(value);
