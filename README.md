@@ -2,6 +2,8 @@
 
 Самостоятельный сервис живых опросов колледжа МИР. Next.js App Router, React, TypeScript, Tailwind, PostgreSQL и Drizzle. Все ресурсы браузера обслуживаются локально. IMI One не используется.
 
+Текущий репозиторий: [dkakashka99-arch/imi_wordcloud](https://github.com/dkakashka99-arch/imi_wordcloud). История переноса: [docs/MIGRATION.md](docs/MIGRATION.md).
+
 ## Разработка
 
 Node.js 24. `npm ci`, скопировать `.env.example` в `.env`, задать отдельную PostgreSQL БД. Миграция: `node --env-file=.env --import tsx scripts/migrate.ts`; затем аналогично `scripts/seed.ts`. `npm run dev`. Seed повторно не перезаписывает мероприятие и не удаляет ответы.

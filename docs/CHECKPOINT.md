@@ -1,13 +1,11 @@
-# Checkpoint — перенос и шаг 3, 23.10.2026
+# Checkpoint — перенос и CI этапов 2–3, 23.10.2026
 
-Текущая ветка feature/03-moderation-display поверх локального 08f2ccd (remote шаг 2 d936816778e6ca5490332064e0f4cdfef99aabea, tree3932db2f68bf0d428a05665dc933f580abdfbe70). Чужих изменений нет. Шаг 3 реализован и проверен локально, подробности docs/STEP_03_REPORT.md. Не повторять чтение всего проекта и завершённые локальные проверки без изменений.
+Текущий репозиторий https://github.com/dkakashka99-arch/imi_wordcloud, подключение devwork. Доступ восстановлен после установки GitHub App (installation174444890). Старый salakal/imi-wordcloud сохранён. Детали и карта коммитов: docs/MIGRATION.md. origin указывает на новый repo, source-salakal — на старый. Локальные и remote commit SHA отличаются; сравнивать деревья. Не переносить код повторно.
 
-## Первое незавершённое действие
+Исходная ветка 3: remote e291f4a6365a72ddf552bc0b80c977edc4466db1, локально 449c7d3; tree e71e278738bfede7ad2b71bf254fce1494276a3f проверено. Все рабочие ветки восстановлены. Новый main — только README, production-релиза нет.
 
-Перенести проект по инструкции пользователя из salakal/imi-wordcloud в новый аккаунт devwork, фактический репозиторий dkakashka99-arch/imi_wordcloud. Новое подключение devwork; исходное Primary. Каждый GitHub tool требует явный link_id. Репозиторий назначения пустой и PUBLIC. Чтение метаданных работает; create_file и collaborator permission дают 403 Resource not accessible by integration. Файлы/ветки в новом repo не созданы. Нужно восстановить write scope/доступ GitHub installation к репозиторию. Не пробовать запись в цикле; после изменения прав проверить состояние перед повтором. Не удалять старый репозиторий.
+Этап 2: новый PR #1, head b31eccedd9e8840776f8e6ec25ab942d21af8e05, base develop09c6a35395126e87036cd2f3827c381b05cce90d. CI39940693442 стартовал, PostgreSQL container/checkout/setup-node PASS, зависимости устанавливаются. Старые billing/403 больше не блокируют работу. До merge дождаться всех проверок актуального head, исправить реальные ошибки, не ослаблять тесты.
 
-Для сохранности новая работа отправляется только в feature/03-moderation-display исходного приватного репозитория, без merge/повторного PR шага 2. Локальная история отличается от API-коммитов, сравнивать tree. Manifest полного исходного дерева до шага 3: ../migration-tree.json; нужно пересоздать после изменений, только tracked исходники, без .env/секретов/node_modules/.next.
+Этап 3 уже реализован: docs/STEP_03_REPORT.md. Локально PASS lint/typecheck/build, 8 unit, 18 integration PGlite и public/admin HTTP. Эти независимые результаты не повторять без изменений. Browser/native gate теперь выполняется в новом GitHub. Следующие действия: отдельный PR этапа 3, проверить CI обоих этапов, последовательно слить 2 → 3 в develop после PASS. Точные результаты, PR/SHA/run записать в checkpoint и TASKS. Не объявлять DONE до гейта.
 
-После восстановления доступа: перенос веток/истории, CI текущей головы шага 2 (PR #3 старого repo). После PASS merge в develop нового repo, затем PR шага 3 и его native PostgreSQL/browser CI. У шага 3 локально PASS lint/typecheck, 8 unit, build, 18 integration PGlite и HTTP; E2E не запускался, физических устройств/проектора нет. Старый Actions job39933775435 не стартовал из-за billing/spending limit, причина подтверждена annotation. Платные изменения агент не выполняет.
-
-VPS/домен и GigaChat ключ не предоставлены. Production не публиковался, AI выключен. Main/develop не менялись, IMI One не используется. Следующий этап 4 пока не начинать: сначала закончить перенос и гейты 2–3.
+VPS/домен и ключ GigaChat не предоставлены. Production не публиковался, AI выключен. Физические устройства/сети РФ, нагрузка200–300, native backup/restore не проверены. Main и IMI One не изменять. Этап 4 отдельно после завершения текущих проверок.
