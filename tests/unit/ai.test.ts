@@ -49,6 +49,15 @@ describe('GigaChat safety and transport', () => {
   });
   it('rejects invented words, alias cycles, duplicate sources and fabricated evidence counts', () => {
     expect(validateResult('aliases', result, snapshot)).toEqual(result);
+    const constrained = JSON.stringify(responseSchema('aliases', ['доход', 'зарплата']));
+    expect(constrained).toContain('"enum":["доход","зарплата"]');
+    expect(() =>
+      validateResult(
+        'aliases',
+        { suggestions: [{ ...result.suggestions[0], source: ['зарплата', 'зарплата'] }] },
+        snapshot,
+      ),
+    ).toThrow();
     expect(() =>
       validateResult(
         'aliases',
@@ -126,7 +135,12 @@ describe('GigaChat safety and transport', () => {
         chats++;
         const b = JSON.parse(body!);
         expect(b.response_format.type).toBe('json_schema');
-        expect(b.response_format.schema).toEqual(responseSchema('aliases'));
+        expect(b.response_format.schema).toEqual(
+          responseSchema(
+            'aliases',
+            snapshot.words.map((w) => w.text),
+          ),
+        );
         if (failure === 'timeout') throw new AiError('timeout');
         if (typeof failure === 'number') return { status: failure, body: {} };
         return {
@@ -148,7 +162,10 @@ describe('GigaChat safety and transport', () => {
           'GigaChat-2',
           prompt('aliases'),
           { words: snapshot.words },
-          responseSchema('aliases'),
+          responseSchema(
+            'aliases',
+            snapshot.words.map((w) => w.text),
+          ),
         ),
       ).rejects.toBeInstanceOf(AiError);
       expect(chats).toBe(1);

@@ -25,7 +25,10 @@ try {
     model,
     prompt('aliases'),
     { words: snapshot.words },
-    responseSchema('aliases'),
+    responseSchema(
+      'aliases',
+      snapshot.words.map((w) => w.text),
+    ),
   );
   phase = 'semantic_validation';
   const parsed = aliasResult.safeParse(response.result);

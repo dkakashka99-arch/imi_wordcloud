@@ -187,7 +187,10 @@ export async function startAnalysis(
       model,
       prompt(cmd.kind),
       { words: data.words },
-      responseSchema(cmd.kind),
+      responseSchema(
+        cmd.kind,
+        data.words.map((w) => w.text),
+      ),
     );
     const result = validateResult(cmd.kind, output.result, data);
     await c.query(
