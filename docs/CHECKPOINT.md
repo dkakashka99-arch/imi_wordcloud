@@ -10,9 +10,11 @@ Remote: salakal/imi-wordcloud. Шаги 0–1 слиты через PR #1/#2; de
 
 ## Следующее действие
 
-Поставить текущий код через GitHub tree/commit/ref tools отдельной feature-веткой из develop. Открыть PR, дождаться CI (6 unit + 14 integration + 4 browser tests и HTTP), исправить реальные ошибки. Проверять все workflow runs через github_fetch /actions/runs?head_sha=..., поскольку fetch_commit_workflow_runs фильтрует только PR-run. CI теперь не дублирует feature push и pull_request.
+PR #3 уже открыт: https://github.com/salakal/imi-wordcloud/pull/3 . Implementation head d0a1cf54c6312768462d524213a36be60e9b4d0f, tree 4c1815e3d6f8372e8c9d5e1f7a5b92afff0ed422 соответствует локальному 223c406. Не создавать повторный PR/ветку и не переносить код заново.
 
-Перед merge проверить актуальную голову и использовать expected_head_sha; без force push main/develop. Когда PR шага 2 слит и CI актуальной головы success — не повторять аудит шагов 0–1, следующий этап 3: модерация, стоп-лист/алиасы, CSV, сравнение и репетиция. Сначала проверить живое состояние PR, чтобы не дублировать поставку.
+CI 39933775435 дважды завершился до старта команд: runner отсутствует, steps пустые (jobs 120348196999, 120349654090). Есть 2 check annotations, текст пока недоступен через поддерживаемый endpoint. Нельзя угадывать причину (квота, оплата или иное) без annotations. Браузер GitHub не авторизован. Сначала прочитать ошибку запуска/получить минимально нужное участие владельца, затем запустить CI актуальной головы PR: PostgreSQL 17 + 6 unit/14 integration/4 browser и HTTP. Код и локальные проверки не повторять без изменений.
+
+PR оставлен открытым, без merge. После устранения блокера проверять актуальную голову и expected_head_sha; без force push main/develop. Если PR уже слит — следующий шаг 3, иначе завершить текущий гейт. Проверять все workflow runs через github_fetch /actions/runs?head_sha=..., а не только PR-filtered helper.
 
 ## Внешние условия
 
