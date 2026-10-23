@@ -29,3 +29,7 @@ CI в GitHub подтверждён на PostgreSQL 17, а также в Chromiu
 ## Перенос в devwork и проверка этапа 3
 
 Проект перенесён в dkakashka99-arch/imi_wordcloud, восстановлены ветки и локальная история с проверкой каждого дерева. CI этапа3 прошёл на native PostgreSQL17 и Chromium/WebKit (6 E2E). Исправлен ESM импорт Next headers для браузерных фикстур. См. docs/MIGRATION.md и docs/STEP_03_REPORT.md.
+
+## Шаг 4 — GigaChat
+
+OAuth/refresh, проверенный TLS, обнаружение Lite, строгие JSON Schema/Zod с enum выбранных слов. Задания PostgreSQL с сериализацией генерации, лимитами, кешем и учётом токенов, включая отклонённые результаты. Организатор отдельно одобряет алиасы, скрытие или публикацию резюме; оригиналы сохраняются, новые данные скрывают устаревшее резюме. Native CI:12 unit/24 integration/8 browser PASS. Реальный synthetic smoke39994534955: OAuth/модели и все3 задачи GigaChat-2 PASS. Runtime AI выключен по умолчанию; production не опубликован. Детали docs/STEP_04_REPORT.md.

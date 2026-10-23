@@ -165,6 +165,20 @@ export function Screen({ slug, origin }: { slug: string; origin: string }) {
           </aside>
         </section>
       )}
+      {group?.summary && (
+        <section className="ai-summary">
+          <h2>Итоги · одобрено организатором</h2>
+          <ul>
+            {group.summary.points.map((point, index) => (
+              <li key={index}>{point.text}</li>
+            ))}
+          </ul>
+          <p className="help">
+            Подготовлено GigaChat по снимку ответов. При новых ответах резюме скрывается до
+            повторного анализа.
+          </p>
+        </section>
+      )}
       {error && (
         <p className="notice" role="status">
           Связь прервалась. Показываем последние полученные данные.

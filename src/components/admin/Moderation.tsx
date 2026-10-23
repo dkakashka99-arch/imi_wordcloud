@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import type { ModerationState, ModerationCommand } from '@/lib/admin/moderation';
+import { AiPanel } from './AiPanel';
 export function Moderation({
   eventId,
   questionId,
@@ -62,6 +63,7 @@ export function Moderation({
   }
   return (
     <section className="moderation-panel">
+      <AiPanel eventId={eventId} questionId={questionId} archived={archived} />
       {error && (
         <p className="notice error" role="alert">
           {error}

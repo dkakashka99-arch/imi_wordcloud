@@ -29,5 +29,11 @@ export type ScreenState = {
     words: Word[];
     answerCount: number;
     participantCount: number;
+    summary?: {
+      points: { text: string; evidence: { word: string; group: number; count: number }[] }[];
+      groups: { group: number; label: string }[];
+      model: string;
+      analyzedAt: string;
+    } | null;
   }[];
 };

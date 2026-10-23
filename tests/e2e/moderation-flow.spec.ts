@@ -44,6 +44,12 @@ test('moderation hides and restores literal HTML, CSV downloads and comparison k
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto(`/admin/events/${eventId}`);
   await page.getByRole('button', { name: 'Модерация и экспорт', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'GigaChat · помощник организатора', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Найти похожие ответы', exact: true }),
+  ).toBeDisabled();
   await page
     .getByRole('checkbox', { name: 'Новые ответы показывать только после одобрения' })
     .check();

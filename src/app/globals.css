@@ -443,6 +443,28 @@ section.card {
   border-top: 1px solid #b7c9b3;
   padding-top: 1rem;
 }
+.ai-words {
+  max-height: 18rem;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.ai-suggestion {
+  padding: 1rem 0;
+  border-top: 1px solid #d5dccd;
+  overflow-wrap: anywhere;
+}
+.ai-job {
+  margin-top: 1rem;
+}
+.ai-summary {
+  margin-top: 2rem;
+  border-top: 1px solid #b7c9b3;
+  padding-top: 1rem;
+  font-size: 1.25rem;
+}
+.ai-summary li {
+  margin-bottom: 0.7rem;
+}
 .admin-form textarea {
   width: 100%;
   min-width: 0;

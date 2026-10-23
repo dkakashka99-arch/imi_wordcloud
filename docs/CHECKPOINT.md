@@ -1,17 +1,17 @@
-# Checkpoint — этапы 2–3 после переноса, 23.10.2026
+# Checkpoint — этап 4 GigaChat, 23.10.2026
 
-Текущий репозиторий: https://github.com/dkakashka99-arch/imi_wordcloud, подключение devwork. Перенос завершён; деревья восстановленных версий сверены с исходными. Старый salakal/imi-wordcloud сохранён. Карта коммитов/PR — docs/MIGRATION.md. origin — новый repo, source-salakal — старый. Локальные и API SHA отличаются; сравнивать tree. Не переносить повторно.
+Репозиторий https://github.com/dkakashka99-arch/imi_wordcloud, devwork. Перенос завершён, не повторять. Старый salakal сохранён, карта docs/MIGRATION.md. IMI One не изменять. Локальные/API SHA различаются: сверять tree, без force push.
 
-## Подтверждённое состояние
+Этапы0–3 DONE, develop до этапа4:08aa19b24fc89ec3d092d7b9b728a8d1af5bf1d0, CI39987056531 SUCCESS.
 
-Этап 2: PR #1 слит в develop, merge ded479a2eaeab59b343b62b8a2477dfb0cb29e8a. CI39941081500 attempt2 SUCCESS, job120523888191, code head db18420d080c4a6c9af5864bd22125021dd99597: lint/typecheck, 6 unit, PostgreSQL17 миграции/14 integration, build, public/admin HTTP, 4 Chromium/WebKit E2E, production audit0. Attempt1 остановился на таймауте Ubuntu mirror при установке браузеров; повтор без изменений прошёл.
+Этап4: feature/04-gigachat-ai, PR #3. Реализация/доказательства docs/STEP_04_REPORT.md, настройка docs/GIGACHAT.md. Полный CI39993783572 PASS:12 unit/24 native integration/8 browser, build/HTTP/audit0. Последние enum/лимиты схемы и сохранение usage проходят текущий CI PR до merge.
 
-Этап 3: PR #2. Полный CI39941087673 SUCCESS на bb01ac3397d31563a97e3a3b8f063fb4c69bb847; документационный head bc33c8875a1da92398598c2ec24041b8b8e6b06d — CI39941760344 SUCCESS. Проверены lint/typecheck, 8 unit, PostgreSQL17/18 integration, build, public/admin HTTP, 6 Chromium/WebKit E2E, production audit0. Ограничения — docs/STEP_03_REPORT.md и TEST_REPORT.md. Явный next/headers.js устранил загрузку ESM фикстур; проверки не ослаблялись.
+Ключ добавлен пользователем в Actions Secret GIGACHAT_AUTH_KEY; личный портфолио-проект, PERS. Не читать/не выводить секрет. Smoke39994534955 SUCCESS на f2c04914ff8c631de215dc3fb62ba4855cf7089f: OAuth/модели/GigaChat-2 и все3 задачи с JSON Schema/семантической проверкой/TLS. Только синтетика. Последующие изменения jobs.ts сохраняют usage до валидации, не меняют клиент/промпт/схему реального smoke.
 
 ## Первое незавершённое действие
 
-Этот коммит меняет только итоговую документацию. Проверить актуальную голову PR #2 и её CI через /actions/runs?head_sha=...; слить в develop с expected_head_sha после PASS, затем проверить итоговый develop CI. Если PR уже слит и develop зелёный — этапы 2–3 завершены, не повторять локальные проверки без новых изменений. По разрешению пользователя продолжать этап 4 (GigaChat). При неожиданном head/изменениях сверить live-состояние, не выполнять force push.
+Проверить live head PR #3 и полный CI. Если зелёный — merge с expected_head_sha, затем сверить merge tree и develop CI/synthetic smoke. Если PR уже слит и develop зелёный — этап4 завершён, не повторять тесты/вызовы без причины. Следующий этап5: российский VPS/домен; независимые deployment-файлы/инструкции можно подготовить без сервера. При чужих изменениях сначала сверить состояние.
 
 ## Оставшиеся условия
 
-Main — только начальный README, production-релиза нет. VPS/домен и ключ GigaChat не предоставлены, AI выключен. Не проверены физические устройства/проектор, сети РФ, нагрузка200–300/p95, native backup/restore. Полный npm ci сообщает 9 dev-toolchain audit findings (4 moderate/5 high); production audit0 не заменяет их разбор до релиза. IMI One не изменять.
+Main — начальный README, production нет. VPS в России/домен отсутствуют; стоимость согласовать до покупки. Actions Secret не настраивает production; runtime AI выключен по умолчанию. Не проверены физические устройства/проектор, сети РФ, нагрузка200–300/p95, native backup/restore. До релиза разобрать9 dev-toolchain findings (4moderate/5high); production audit0 не заменяет разбор.

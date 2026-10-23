@@ -12,6 +12,7 @@ import {
   foreignKey,
   uniqueIndex,
   index,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 export const questionStatus = pgEnum('question_status', ['draft', 'open', 'paused', 'closed']);
@@ -47,6 +48,8 @@ export const questions = pgTable(
     maxAnswers: integer('max_answers').default(3).notNull(),
     maxLength: integer('max_length').default(60).notNull(),
     premoderation: boolean().default(false).notNull(),
+    aiSummary: jsonb('ai_summary'),
+    aiSummaryRevision: bigint('ai_summary_revision', { mode: 'number' }),
     revision: bigint({ mode: 'number' }).default(0).notNull(),
     position: integer().default(0).notNull(),
   },
@@ -189,4 +192,34 @@ export const stopWords = pgTable(
     word: text().notNull(),
   },
   (t) => [unique().on(t.questionId, t.word)],
+);
+
+export const aiJobs = pgTable(
+  'ai_jobs',
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => questions.id, { onDelete: 'cascade' }),
+    adminId: uuid('admin_id').references(() => admins.id, { onDelete: 'set null' }),
+    kind: text().notNull(),
+    model: text().notNull(),
+    status: text().notNull(),
+    revision: bigint({ mode: 'number' }).notNull(),
+    reviewRevision: bigint('review_revision', { mode: 'number' }).notNull(),
+    cacheKey: text('cache_key').notNull(),
+    snapshot: jsonb().notNull(),
+    result: jsonb(),
+    decisions: jsonb().default({}).notNull(),
+    usage: jsonb(),
+    error: text(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('ai_job_cache').on(t.questionId, t.cacheKey),
+    index('ai_job_history').on(t.questionId, t.createdAt),
+    check('ai_job_status', sql`${t.status} in ('running','completed','failed','discarded')`),
+    check('ai_job_kind', sql`${t.kind} in ('aliases','moderation','summary')`),
+  ],
 );
