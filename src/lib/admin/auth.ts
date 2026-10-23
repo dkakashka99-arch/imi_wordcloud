@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { cookies } from 'next/headers';
+import { cookies } from 'next/headers.js';
 import { database } from '@/db/client';
 import { HttpError } from '@/lib/http';
 import { hashPassword, verifyPassword } from './password';

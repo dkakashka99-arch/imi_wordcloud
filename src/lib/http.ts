@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { cookies } from 'next/headers';
+import { cookies } from 'next/headers.js';
 export class HttpError extends Error {
   constructor(
     public status: number,
