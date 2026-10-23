@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { AdminCommand, AdminEvent, AdminQuestion } from '@/lib/admin/contracts';
+import { Moderation } from './Moderation';
 import { QuestionForm } from './QuestionForm';
 function QuestionCard({
   question,
@@ -15,7 +16,8 @@ function QuestionCard({
   busy: boolean;
   run: (c: AdminCommand) => Promise<boolean>;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(false),
+    [moderating, setModerating] = useState(false);
   const status = {
     draft: 'Черновик',
     open: 'Приём ответов',
@@ -114,6 +116,16 @@ function QuestionCard({
             </button>
           )}
         </fieldset>
+      )}
+      <button
+        className="text-button"
+        aria-expanded={moderating}
+        onClick={() => setModerating((v) => !v)}
+      >
+        Модерация и экспорт
+      </button>
+      {moderating && (
+        <Moderation eventId={event.id} questionId={question.id} archived={event.archived} />
       )}
     </article>
   );
@@ -259,6 +271,11 @@ export function EventEditor({ initial, origin }: { initial: AdminEvent; origin: 
       <section className="admin-title">
         <p className="eyebrow">{event.archived ? 'Архив мероприятия' : 'Управление опросом'}</p>
         <h1>{event.title}</h1>
+        {event.rehearsal && (
+          <p className="notice">
+            Репетиция · все ответы помечаются как тестовые. Рабочее мероприятие не изменяется.
+          </p>
+        )}
         <div className="actions">
           <Link className="button" href={`/e/${event.slug}/screen`} target="_blank">
             Открыть экран проектора
@@ -334,6 +351,7 @@ export function EventEditor({ initial, origin }: { initial: AdminEvent; origin: 
             const form = new FormData(e.currentTarget);
             await run({
               action: 'duplicate',
+              rehearsal: form.has('rehearsal'),
               title: String(form.get('title')),
               slug:
                 String(form.get('slug') || '').trim() || `event-${crypto.randomUUID().slice(0, 8)}`,
@@ -357,6 +375,10 @@ export function EventEditor({ initial, origin }: { initial: AdminEvent; origin: 
             <label>
               Адрес копии (необязательно)
               <input name="slug" pattern="[a-z0-9][a-z0-9-]*" maxLength={64} />
+            </label>
+            <label className="check">
+              <input type="checkbox" name="rehearsal" />
+              Репетиционная копия с тестовыми ответами
             </label>
             <button className="button secondary">Создать копию мероприятия</button>
           </fieldset>

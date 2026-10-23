@@ -1,21 +1,17 @@
-# Checkpoint — шаг 2, 23.10.2026
+# Checkpoint — этапы 2–3 после переноса, 23.10.2026
 
-## База и локальный результат
+Текущий репозиторий: https://github.com/dkakashka99-arch/imi_wordcloud, подключение devwork. Перенос завершён; деревья восстановленных версий сверены с исходными. Старый salakal/imi-wordcloud сохранён. Карта коммитов/PR — docs/MIGRATION.md. origin — новый repo, source-salakal — старый. Локальные и API SHA отличаются; сравнивать tree. Не переносить повторно.
 
-Remote: salakal/imi-wordcloud. Шаги 0–1 слиты через PR #1/#2; develop при старте шага 2: 0668508f090eca7e767a30d6849ffc0f299238cb. Локальные и API-коммиты имеют разные SHA, сравнивать деревья и актуальное состояние GitHub.
+## Подтверждённое состояние
 
-Текущая feature/02-admin-events реализует вход/scrypt, PostgreSQL-сессии/limiter, безопасный bootstrap, управление мероприятиями/группами/вопросами, текущий вопрос, pause/resume, архив/копирование, SVG/PNG QR. Подробности: docs/STEP_02_REPORT.md и docs/ADMIN.md.
+Этап 2: PR #1 слит в develop, merge ded479a2eaeab59b343b62b8a2477dfb0cb29e8a. CI39941081500 attempt2 SUCCESS, job120523888191, code head db18420d080c4a6c9af5864bd22125021dd99597: lint/typecheck, 6 unit, PostgreSQL17 миграции/14 integration, build, public/admin HTTP, 4 Chromium/WebKit E2E, production audit0. Attempt1 остановился на таймауте Ubuntu mirror при установке браузеров; повтор без изменений прошёл.
 
-Локально PASS: lint, typecheck, 6 unit, production build, 14 integration на PGlite и standalone public/admin HTTP (включая bootstrap/stdin, cookie, авторизацию, Origin, logout). До заявления DONE нужен PostgreSQL 17 и browser CI актуального remote head. Новый E2E добавлен, ещё не запускался в браузере локально.
+Этап 3: PR #2. Полный CI39941087673 SUCCESS на bb01ac3397d31563a97e3a3b8f063fb4c69bb847; документационный head bc33c8875a1da92398598c2ec24041b8b8e6b06d — CI39941760344 SUCCESS. Проверены lint/typecheck, 8 unit, PostgreSQL17/18 integration, build, public/admin HTTP, 6 Chromium/WebKit E2E, production audit0. Ограничения — docs/STEP_03_REPORT.md и TEST_REPORT.md. Явный next/headers.js устранил загрузку ESM фикстур; проверки не ослаблялись.
 
-## Следующее действие
+## Первое незавершённое действие
 
-PR #3 уже открыт: https://github.com/salakal/imi-wordcloud/pull/3 . Implementation head d0a1cf54c6312768462d524213a36be60e9b4d0f, tree 4c1815e3d6f8372e8c9d5e1f7a5b92afff0ed422 соответствует локальному 223c406. Не создавать повторный PR/ветку и не переносить код заново.
+Этот коммит меняет только итоговую документацию. Проверить актуальную голову PR #2 и её CI через /actions/runs?head_sha=...; слить в develop с expected_head_sha после PASS, затем проверить итоговый develop CI. Если PR уже слит и develop зелёный — этапы 2–3 завершены, не повторять локальные проверки без новых изменений. По разрешению пользователя продолжать этап 4 (GigaChat). При неожиданном head/изменениях сверить live-состояние, не выполнять force push.
 
-CI 39933775435 дважды завершился до старта команд: runner отсутствует, steps пустые (jobs 120348196999, 120349654090). 23.10 после безопасного входа в браузере прочитана annotation GitHub: «The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings». Владельцу нужно проверить Billing & plans и устранить проблему оплаты/лимита Actions; платные изменения агент не выполняет. Второе сообщение — уведомление о переходе ubuntu-latest на Ubuntu 26, не ошибка тестов. Затем запустить CI актуальной головы PR: PostgreSQL 17 + 6 unit/14 integration/4 browser и HTTP. Код и локальные проверки не повторять без изменений.
+## Оставшиеся условия
 
-PR оставлен открытым, без merge. После устранения блокера проверять актуальную голову и expected_head_sha; без force push main/develop. Если PR уже слит — следующий шаг 3, иначе завершить текущий гейт. Проверять все workflow runs через github_fetch /actions/runs?head_sha=..., а не только PR-filtered helper.
-
-## Внешние условия
-
-VPS/домен не предоставлены; production не публиковался. GigaChat выключен, ключ/квота/условия Freemium не подтверждены, клиент пока не реализован. Физические устройства, сети РФ, нагрузка 200–300/p95, restart native PostgreSQL/backup restore — не проверены. Production выпуск требует финального подтверждения по SPEC.md. IMI One не используется.
+Main — только начальный README, production-релиза нет. VPS/домен и ключ GigaChat не предоставлены, AI выключен. Не проверены физические устройства/проектор, сети РФ, нагрузка200–300/p95, native backup/restore. Полный npm ci сообщает 9 dev-toolchain audit findings (4 moderate/5 high); production audit0 не заменяет их разбор до релиза. IMI One не изменять.

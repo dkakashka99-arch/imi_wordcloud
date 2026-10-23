@@ -20,6 +20,7 @@ export const events = pgTable('events', {
   slug: text().notNull().unique(),
   title: text().notNull(),
   archived: boolean().default(false).notNull(),
+  rehearsal: boolean().default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 export const audiences = pgTable(
@@ -45,6 +46,7 @@ export const questions = pgTable(
     status: questionStatus().default('draft').notNull(),
     maxAnswers: integer('max_answers').default(3).notNull(),
     maxLength: integer('max_length').default(60).notNull(),
+    premoderation: boolean().default(false).notNull(),
     revision: bigint({ mode: 'number' }).default(0).notNull(),
     position: integer().default(0).notNull(),
   },
@@ -166,3 +168,25 @@ export const loginLimits = pgTable('login_limits', {
   attempts: integer().notNull(),
   resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
 });
+
+export const wordAliases = pgTable(
+  'word_aliases',
+  {
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => questions.id, { onDelete: 'cascade' }),
+    source: text().notNull(),
+    target: text().notNull(),
+  },
+  (t) => [unique().on(t.questionId, t.source)],
+);
+export const stopWords = pgTable(
+  'stop_words',
+  {
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => questions.id, { onDelete: 'cascade' }),
+    word: text().notNull(),
+  },
+  (t) => [unique().on(t.questionId, t.word)],
+);
