@@ -61,9 +61,13 @@ jobs:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
           RELEASE: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          test "$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/main --jq .object.sha)" = "$RELEASE"
           [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]]
           SSH_OPTS=(-i "$RUNNER_TEMP/imi-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/imi-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20)
+          available_kb=$(ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "df -Pk /opt/imi-wordcloud" | awk 'NR==2 {print $4}')
+          test "$available_kb" -ge 8388608
           ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "mkdir -p /opt/imi-wordcloud/incoming/$RELEASE /opt/imi-wordcloud/releases/$RELEASE"
           scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" images.tar.gz release.tar.gz SHA256SUMS "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/incoming/$RELEASE/"
           ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; gunzip -c images.tar.gz | docker load; tar -xzf release.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; bash /opt/imi-wordcloud/releases/$RELEASE/ops/deploy.sh $RELEASE; rm images.tar.gz release.tar.gz SHA256SUMS"

@@ -47,7 +47,7 @@ Suggested support request: “Активен VDS 18650201, без ispmanager. В
 
 Set apex (`@` / `imi-cloudpoll.ru.`) A → `212.109.196.228`, TTL 300–600. Do not add AAAA until working IPv6 is configured. Optional www CNAME → apex is not required and not included in certificate. Verify authoritative answers and independent recursive resolvers, registration/delegation, and remove contradictory parking A/AAAA. DNS creation cannot complete an unpaid/unregistered domain.
 
-Fallback: delegate to another DNS host with an explicitly free plan and no proxy/CDN, then create the same A record there. Do not operate a single authoritative DNS instance on this VPS. Provider/NS change needs an account and verification; keep FirstVDS DNS as first choice. No alternative account has been created or purchased.
+Fallback: Cloudflare Free authoritative DNS (https://developers.cloudflare.com/dns/faq/) with the A record in DNS-only mode, proxy disabled. Create a free zone, replace registrar NS with the two assigned by Cloudflare, create apex A → 212.109.196.228, verify delegation. Do not enable its proxy/CDN. This introduces an overseas authoritative DNS dependency; FirstVDS is preferred. Do not operate a single authoritative DNS instance on this VPS. Provider/NS change needs an account and verification; keep FirstVDS DNS as first choice. No alternative account has been created or purchased.
 
 ## HTTPS and reverse proxy
 
@@ -80,7 +80,7 @@ If GitHub-hosted SSH cannot reach Russia: use a **dedicated outbound-only self-h
 
 ## GigaChat
 
-Keep existing consent/manual apply workflow. Requests are organizer-triggered, bounded and rate/budget limited by AI jobs, not participant submissions. Tokens are cached with single-flight renewal; only OAuth/401 retry, no ambiguous chat generation retry. 20s timeout, validated response schema, safe error messages, fixed remote hosts and TLS verification are preserved. AI outage does not enter participant submit/cloud path.
+Keep existing consent/manual apply workflow. Requests are organizer-triggered, bounded and rate limited by AI jobs, not participant submissions. Tokens are cached with single-flight renewal; only OAuth/401 retry, no ambiguous chat generation retry. 20s timeout, validated response schema, safe error messages, fixed remote hosts and TLS verification are preserved. AI outage does not enter participant submit/cloud path.
 
 Store key directly in `shared/app.env` mode 600 (`GIGACHAT_AUTH_KEY`) or extend compose with a read-only secret file and existing `GIGACHAT_AUTH_KEY_FILE`. Never pass it as build-arg or NEXT_PUBLIC variable. Obtain current Russian CA bundle from official Sber/Minцифры links documented in `docs/GIGACHAT.md`, verify fingerprint through the official channel, save `shared/certs/russian-trusted-ca.pem` readable by container UID 1000 (CA is public, directory 755/file 644). Only these HTTPS requests receive additional trust. Do not set NODE_TLS_REJECT_UNAUTHORIZED=0. Credentials stay on host; GitHub need only SSH deploy credentials.
 
@@ -99,7 +99,7 @@ bash /opt/imi-wordcloud/current/ops/backup.sh
 bash /opt/imi-wordcloud/current/ops/restore-drill.sh
 ```
 
-Install systemd service/timer as root from ops, `systemctl daemon-reload`, `systemctl enable --now imi-wordcloud-backup.timer`. Daily 03:00 Samara plus before updates. Retention 7 daily / 4 weekly / 3 monthly; tag-scoped pruning. `restic check` follows backups. Review `systemctl --failed` and `journalctl -u imi-wordcloud-backup.service`; failed copies must be investigated. RPO up to 24h normally: manually copy after the event and important sessions. RTO depends on external destination and dump size, to be measured during rehearsal.
+Install systemd service/timer as root from ops, `systemctl daemon-reload`, `systemctl enable --now imi-wordcloud-backup.timer`. Daily 03:00 Samara plus before updates. Retention 7 daily / 4 weekly / 3 monthly; tag-scoped pruning. `restic check` follows backups. Recoverable snapshot tag is added only after pg_dump and upload both succeed; incomplete uploads never become the latest tagged recovery point. Review `systemctl --failed` and `journalctl -u imi-wordcloud-backup.service`; failed copies must be investigated. RPO up to 24h normally: manually copy after the event and important sessions. RTO depends on external destination and dump size, to be measured during rehearsal.
 
 Restore drill downloads latest tagged dump and restores into an isolated, networkless disposable PostgreSQL container; production untouched. Compare row counts, important event questions/results and sample exports against backup-time records. CI additionally verifies exactly 300 restored submissions. External transfer/encryption/key recovery must be verified on chosen destination before claiming backups complete.
 

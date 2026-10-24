@@ -15,8 +15,19 @@ set +a
 cd "$root/current"
 release=$(cat "$root/shared/current-release")
 export RELEASE=$release
-# pipefail prevents recording success for a failed pg_dump.
-docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml exec -T db pg_dump -U mir -d mir_wordcloud -Fc | restic backup --stdin --stdin-filename postgres.dump --tag imi-wordcloud
+# Publish the recoverable tag only after BOTH pg_dump and restic succeed.
+# A truncated stream can otherwise produce an apparently successful restic snapshot.
+result=$(mktemp)
+trap 'rm -f "$result"' EXIT
+if ! docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml exec -T db pg_dump -U mir -d mir_wordcloud -Fc | restic backup --json --stdin --stdin-filename postgres.dump --tag imi-wordcloud-pending > "$result"; then
+  failed=$(jq -r 'select(.message_type == "summary") | .snapshot_id // empty' "$result" | tail -1)
+  if [[ $failed =~ ^[0-9a-f]{8,64}$ ]]; then restic forget "$failed"; fi
+  echo 'Backup failed; no recoverable snapshot published' >&2
+  exit 1
+fi
+snapshot=$(jq -r 'select(.message_type == "summary") | .snapshot_id // empty' "$result" | tail -1)
+[[ $snapshot =~ ^[0-9a-f]{8,64}$ ]] || { echo 'Missing snapshot ID'; exit 1; }
+restic tag --add imi-wordcloud --remove imi-wordcloud-pending "$snapshot"
 # Prune only this application's backups. Do not prune other repositories/tags.
 restic forget --tag imi-wordcloud --group-by tags --keep-daily 7 --keep-weekly 4 --keep-monthly 3 --prune
 restic check

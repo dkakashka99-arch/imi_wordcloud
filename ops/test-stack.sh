@@ -42,8 +42,17 @@ test "$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' -H 'Host: imi-cloud
 "${c[@]}" run --rm -T -e LOAD_TEST_ALLOWED=true -e VERIFY_ONLY=true tools node --import tsx scripts/load-production.ts | tee -a infrastructure-results.txt
 # A real pg_dump/pg_restore roundtrip on isolated test data.
 "${c[@]}" exec -T db pg_dump -U mir -d mir_wordcloud -Fc > "$work/test.dump"
+# Test encrypted restic roundtrip in a disposable local repository (not off-site proof).
+mkdir -p "$work/restic"
+restic=(docker run --rm -i -v "$work/restic:/backup" -e RESTIC_PASSWORD=ci-only-not-a-real-secret restic/restic:0.16.4 -r /backup/repo)
+"${restic[@]}" init
+"${restic[@]}" backup --stdin --stdin-filename postgres.dump --tag imi-wordcloud-pending < "$work/test.dump"
+"${restic[@]}" tag --add imi-wordcloud --remove imi-wordcloud-pending latest
+"${restic[@]}" check
+"${restic[@]}" dump --tag imi-wordcloud latest /postgres.dump > "$work/restored.dump"
+cmp "$work/test.dump" "$work/restored.dump"
 "${c[@]}" exec -T db createdb -U mir restore_drill
-"${c[@]}" exec -T db pg_restore --exit-on-error -U mir -d restore_drill < "$work/test.dump"
+"${c[@]}" exec -T db pg_restore --exit-on-error -U mir -d restore_drill < "$work/restored.dump"
 test "$("${c[@]}" exec -T db psql -U mir -d restore_drill -Atc 'SELECT count(*) FROM submissions')" = 300
 "${c[@]}" exec -T db dropdb -U mir restore_drill
-printf 'PASS: restart persistence; pg_dump/pg_restore: 300 responses\n' | tee -a infrastructure-results.txt
+printf 'PASS: restart persistence; encrypted restic roundtrip; pg_dump/pg_restore: 300 responses\n' | tee -a infrastructure-results.txt

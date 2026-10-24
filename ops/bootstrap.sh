@@ -3,6 +3,7 @@ set -Eeuo pipefail
 [[ $EUID == 0 ]] || { echo 'Run as root in the VPS console'; exit 1; }
 . /etc/os-release
 [[ $ID == ubuntu && $VERSION_ID == 24.04 ]] || { echo 'Ubuntu 24.04 required'; exit 1; }
+[[ $(dpkg --print-architecture) == amd64 ]] || { echo 'This bootstrap targets amd64'; exit 1; }
 # Arguments are PUBLIC keys, never private keys. Keep the console open throughout.
 [[ $# == 2 ]] || { echo 'Usage: bash ops/bootstrap.sh ADMIN_PUBLIC_KEY_FILE CI_PUBLIC_KEY_FILE'; exit 1; }
 ssh-keygen -lf "$1" >/dev/null
