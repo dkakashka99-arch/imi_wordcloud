@@ -1,0 +1,84 @@
+name: Production
+on:
+  workflow_run:
+    workflows: [CI, Infrastructure]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.PRODUCTION_ENABLED == 'true'
+    # Default is GitHub-hosted SSH. Optional dedicated runner must never run PR jobs.
+    runs-on: ${{ vars.DEPLOY_RUNNER || 'ubuntu-24.04' }}
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Reject stale main release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test "$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/main --jq .object.sha)" = "$RELEASE"
+      - name: Require both production checks on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$RELEASE&event=push&per_page=100")
+            if printf '%s' "$runs" | jq -e '[.workflow_runs[] | select((.name == "CI" or .name == "Infrastructure") and .conclusion == "success")] | unique_by(.name) | length == 2' >/dev/null; then exit 0; fi
+            sleep 10
+          done
+          echo 'Both CI and Infrastructure must pass on the release commit'; exit 1
+      - name: Build immutable images
+        env:
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          docker build --target runtime -t imi-wordcloud:$RELEASE .
+          docker build --target tools -t imi-wordcloud-tools:$RELEASE .
+          docker save imi-wordcloud:$RELEASE imi-wordcloud-tools:$RELEASE | gzip > images.tar.gz
+          tar -czf release.tar.gz compose.production.yaml ops
+          sha256sum images.tar.gz release.tar.gz > SHA256SUMS
+      - name: Configure pinned SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Upload and deploy
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]]
+          SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20)
+          ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "mkdir -p /opt/imi-wordcloud/incoming/$RELEASE /opt/imi-wordcloud/releases/$RELEASE"
+          scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" images.tar.gz release.tar.gz SHA256SUMS "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/incoming/$RELEASE/"
+          ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; gunzip -c images.tar.gz | docker load; tar -xzf release.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; bash /opt/imi-wordcloud/releases/$RELEASE/ops/deploy.sh $RELEASE; rm images.tar.gz release.tar.gz SHA256SUMS"
+      - name: Public HTTPS smoke
+        run: |
+          curl --fail --show-error --silent --retry 4 --retry-delay 5 --max-time 15 https://imi-cloudpoll.ru/api/ready
+      - name: Roll back on failed public smoke
+        if: failure()
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # Only roll back if this run actually promoted the current release.
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "test \"\$(cat /opt/imi-wordcloud/shared/current-release)\" != '$RELEASE' || bash /opt/imi-wordcloud/current/ops/rollback.sh"
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519

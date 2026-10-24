@@ -1,0 +1,56 @@
+name: imi-wordcloud
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+x-app: &app
+  env_file: ${APP_ENV_FILE:-/opt/imi-wordcloud/shared/app.env}
+  init: true
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging: *logging
+  volumes:
+    - ${CERTS_DIR:-/opt/imi-wordcloud/shared/certs}:/run/certs:ro
+services:
+  db:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mir
+      POSTGRES_DB: mir_wordcloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in compose.env}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U mir -d mir_wordcloud']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 1g
+    cpus: 0.75
+    pids_limit: 256
+    logging: *logging
+  app:
+    <<: *app
+    image: imi-wordcloud:${RELEASE:?Set RELEASE}
+    restart: unless-stopped
+    ports: ['127.0.0.1:3000:3000']
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 1536m
+    cpus: 1.25
+    pids_limit: 256
+    tmpfs: [/tmp:size=64m, /app/.next/cache:size=64m, mode=1777]
+  tools:
+    <<: *app
+    image: imi-wordcloud-tools:${RELEASE:?Set RELEASE}
+    profiles: [tools]
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 512m
+    cpus: 0.75
+    command: [npm, run, db:migrate]
+volumes:
+  postgres:
+    name: imi-wordcloud-postgres
