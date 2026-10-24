@@ -44,7 +44,7 @@ test "$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' -H 'Host: imi-cloud
 "${c[@]}" exec -T db pg_dump -U mir -d mir_wordcloud -Fc > "$work/test.dump"
 # Test encrypted restic roundtrip in a disposable local repository (not off-site proof).
 mkdir -p "$work/restic"
-restic=(docker run --rm -i -v "$work/restic:/backup" -e RESTIC_PASSWORD=ci-only-not-a-real-secret restic/restic:0.16.4 -r /backup/repo)
+restic=(docker run --rm -i --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$work/restic:/backup" -e RESTIC_PASSWORD=ci-only-not-a-real-secret restic/restic:0.16.4 --no-cache -r /backup/repo)
 "${restic[@]}" init
 "${restic[@]}" backup --stdin --stdin-filename postgres.dump --tag imi-wordcloud-pending < "$work/test.dump"
 "${restic[@]}" tag --add imi-wordcloud --remove imi-wordcloud-pending latest
