@@ -41,7 +41,7 @@ services:
     mem_limit: 1536m
     cpus: 1.25
     pids_limit: 256
-    tmpfs: [/tmp:size=64m, /app/.next/cache:size=64m, mode=1777]
+    tmpfs: ['/tmp:size=64m', '/app/.next/cache:size=64m,mode=1777']
   tools:
     <<: *app
     image: imi-wordcloud-tools:${RELEASE:?Set RELEASE}

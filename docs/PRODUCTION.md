@@ -134,6 +134,6 @@ All active organizers are trusted college-wide administrators and see all events
 
 ## Evidence and outstanding checks
 
-See STEP_05_REPORT.md and CHECKPOINT.md. Container tests run only against unique CI volume and empty DB; 300 concurrent HTTP submissions, cloud totals, restart persistence, pg_dump/restore. Existing 12 unit / 24 integration / 8 browser baseline retained, not replaced. Real GigaChat smoke stays an explicitly dispatched trusted workflow with its own credentials; mocks do not prove production connectivity.
+See STEP_05_REPORT.md and CHECKPOINT.md. Container tests run only against unique CI volume and empty DB; 300 concurrent HTTP submissions, cloud totals, restart persistence, pg_dump/restore. Existing 12 unit / 24 integration / 8 browser baseline retained, not replaced. Real GigaChat smoke stays a trusted push-triggered workflow with its own credentials; mocks do not prove production connectivity.
 
 Pending until access: bootstrap execution, SSH/network route, actual registration/authoritative DNS, HTTPS issuance/renewal, off-site destination and restore, host reboot persistence, all three live AI functions, mobile QR scan/projector, all organizer functions and Russian no-VPN access. Do not declare the 26 October completion criterion achieved until all are recorded.

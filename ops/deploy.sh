@@ -10,6 +10,11 @@ cd "$root/releases/$release"
 export RELEASE=$release
 compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
 previous=$(cat "$root/shared/current-release" 2>/dev/null || true)
+if [[ $previous == "$release" ]]; then
+  curl -fsS --max-time 10 http://127.0.0.1:3000/api/ready >/dev/null
+  echo 'Release already active; previous rollback target retained'
+  exit 0
+fi
 # No traffic is changed before a backup and successful migration.
 "${compose[@]}" up -d --wait db
 if [[ -n $previous ]]; then "$root/current/ops/backup.sh"; fi
