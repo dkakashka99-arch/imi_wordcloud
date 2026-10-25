@@ -4,6 +4,20 @@ const words=['зарплата','высокая зп','команда','кома
 const snapshot={revision:0,totalWords:4,omitted:0,groups:[{group:1,label:'synthetic'}],words:words.map(text=>({text,count:1,groups:[{group:1,count:1}]}))};
 try {
   const client=new GigaClient(aiConfig(),async(...args)=>{
+    if(args[0].endsWith('chat/completions')){
+      const body=JSON.parse(args[2]);
+      function providerSchema(value){
+        if(Array.isArray(value))return value.map(providerSchema);
+        if(value&&typeof value==='object'){
+          const next=Object.fromEntries(Object.entries(value).filter(([k])=>k!=='enum').map(([k,v])=>[k,providerSchema(v)]));
+          if(value.enum){next.type='string';next.maxLength=120;}
+          return next;
+        }
+        return value;
+      }
+      body.response_format.schema=providerSchema(body.response_format.schema);
+      args[2]=JSON.stringify(body);
+    }
     const r=await transport(...args);
     if(args[0].endsWith('chat/completions')){
       const choice=r.body?.choices?.[0],text=choice?.message?.content||'';

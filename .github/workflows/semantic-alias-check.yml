@@ -29,3 +29,5 @@ jobs:
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
 
 # Diagnose incomplete synthetic model response; no participant text or raw output.
+
+# Isolated compatibility experiment: retain full application validators, vary decoder enum only.
