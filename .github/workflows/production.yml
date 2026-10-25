@@ -10,7 +10,12 @@ concurrency:
   group: production
   cancel-in-progress: false
 jobs:
+  backup:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.PRODUCTION_ENABLED != 'false'
+    uses: ./.github/workflows/backup.yml
+    secrets: inherit
   deploy:
+    needs: backup
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.PRODUCTION_ENABLED != 'false'
     # Default is GitHub-hosted SSH. Optional dedicated runner must never run PR jobs.
     runs-on: ${{ vars.DEPLOY_RUNNER || 'ubuntu-24.04' }}
@@ -62,6 +67,7 @@ jobs:
           DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
           RELEASE: ${{ github.event.workflow_run.head_sha }}
           GH_TOKEN: ${{ github.token }}
+          BACKUP_URL: ${{ needs.backup.outputs.artifact_url }}
         run: |
           test "$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/main --jq .object.sha)" = "$RELEASE"
           [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]]
@@ -69,6 +75,11 @@ jobs:
           available_kb=$(ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "df -Pk /opt/imi-wordcloud" | awk 'NR==2 {print $4}')
           test "$available_kb" -ge 8388608
           ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "mkdir -p /opt/imi-wordcloud/incoming/$RELEASE /opt/imi-wordcloud/releases/$RELEASE"
+          if test -n "$BACKUP_URL"; then
+            [[ "$BACKUP_URL" =~ ^https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/[0-9]+/artifacts/[0-9]+$ ]]
+            printf '%s\n' "$BACKUP_URL" > "$RUNNER_TEMP/imi-ssh/backup-proof"
+            scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" "$RUNNER_TEMP/imi-ssh/backup-proof" "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/shared/offsite-backup-$RELEASE"
+          fi
           scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" images.tar.gz release.tar.gz SHA256SUMS "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/incoming/$RELEASE/"
           ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; gunzip -c images.tar.gz | docker load; tar -xzf release.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; bash /opt/imi-wordcloud/releases/$RELEASE/ops/deploy.sh $RELEASE; rm images.tar.gz release.tar.gz SHA256SUMS"
       - name: Public HTTPS smoke

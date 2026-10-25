@@ -17,7 +17,15 @@ if [[ $previous == "$release" ]]; then
 fi
 # No traffic is changed before a backup and successful migration.
 "${compose[@]}" up -d --wait db
-if [[ -n $previous ]]; then "$root/current/ops/backup.sh"; fi
+if [[ -n $previous ]]; then
+  if [[ -f "$root/shared/backup.env" ]]; then
+    "$root/current/ops/backup.sh"
+  else
+    proof=$(cat "$root/shared/offsite-backup-$release" 2>/dev/null || true)
+    [[ $proof =~ ^https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/[0-9]+/artifacts/[0-9]+$ ]] || { echo 'Verified off-site backup required before deployment'; exit 1; }
+    echo 'Verified encrypted off-site Actions backup recorded for this release'
+  fi
+fi
 # Migrations must be additive/backward compatible with the previous app release.
 "${compose[@]}" run --rm -T tools
 rollback() {

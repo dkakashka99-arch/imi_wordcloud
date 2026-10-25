@@ -1,0 +1,76 @@
+name: Encrypted PostgreSQL backup
+on:
+  schedule:
+    - cron: '15 23 * * *'
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact_url:
+        value: ${{ jobs.backup.outputs.artifact_url }}
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      artifact_url: ${{ steps.upload.outputs.artifact-url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Configure verified SSH and encryption key
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/backup"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/backup/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/backup/known_hosts"
+          python3 - <<'PY'
+          import hashlib,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'backup'
+          (root/'password').write_text(hashlib.sha256(b'imi-wordcloud-restic-v1\0'+(root/'key').read_bytes()).hexdigest())
+          (root/'password').chmod(0o600)
+          PY
+      - name: Export consistent database snapshot
+        id: dump
+        run: |
+          ssh_args=(-i "$RUNNER_TEMP/backup/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/backup/known_hosts")
+          if ! ssh "${ssh_args[@]}" deploy@212.109.196.228 'test -f /opt/imi-wordcloud/shared/current-release'; then
+            echo 'No release exists yet: initial database has no data to back up.'
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ssh "${ssh_args[@]}" deploy@212.109.196.228 'set -eu; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml exec -T db pg_dump -U mir -d mir_wordcloud -Fc' > "$RUNNER_TEMP/backup/database.dump"
+          test -s "$RUNNER_TEMP/backup/database.dump"
+      - name: Encrypt and verify actual restoration
+        if: steps.dump.outputs.skip != 'true'
+        run: |
+          work="$RUNNER_TEMP/backup"
+          restic=(docker run --rm -i --user "$(id -u):$(id -g)" -v "$work:/data" -e RESTIC_PASSWORD_FILE=/data/password restic/restic:0.16.4 --no-cache -r /data/repo)
+          "${restic[@]}" init
+          "${restic[@]}" backup --stdin --stdin-filename postgres.dump --tag imi-wordcloud < "$work/database.dump"
+          "${restic[@]}" check
+          "${restic[@]}" dump latest /postgres.dump > "$work/restored.dump"
+          cmp "$work/database.dump" "$work/restored.dump"
+          docker run -d --name imi-backup-restore --network none --memory 512m -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-bookworm
+          for attempt in $(seq 1 60); do docker exec imi-backup-restore pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
+          docker exec -i imi-backup-restore pg_restore --exit-on-error --no-owner -U postgres -d postgres < "$work/restored.dump"
+          docker exec imi-backup-restore psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT count(*) AS events FROM events; SELECT count(*) AS answers FROM submissions;'
+          tar -czf encrypted-backup.tar.gz -C "$work" repo
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: steps.dump.outputs.skip != 'true'
+        with:
+          name: encrypted-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+          path: encrypted-backup.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+      - name: Cleanup temporary sensitive files
+        if: always()
+        run: |
+          docker rm -f imi-backup-restore >/dev/null 2>&1 || true
+          rm -rf "$RUNNER_TEMP/backup"
