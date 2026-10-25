@@ -1,4 +1,4 @@
-name: Semantic live quality diagnosis
+name: Synthetic contextual verdict diagnosis
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -45,7 +45,12 @@ jobs:
           root=/opt/imi-wordcloud
           export RELEASE=$(cat "$root/shared/current-release")
           cd "$root/releases/$RELEASE"
-          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /tmp/classifier.ts:/app/src/lib/semantic/classifier.ts:ro -v /tmp/client.ts:/app/src/lib/ai/client.ts:ro -v /tmp/check-semantic-live.ts:/app/scripts/check-semantic-live.ts:ro tools sh -c 'failed=0; for round in 1 2 3; do node --import tsx scripts/check-semantic-live.ts || failed=1; done; exit "$failed"'
+          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /tmp/classifier.ts:/app/src/lib/semantic/classifier.ts:ro -v /tmp/client.ts:/app/src/lib/ai/client.ts:ro tools node --import tsx --input-type=module <<'JS'
+          import {GigaClient,aiConfig,transport} from './src/lib/ai/client.ts';import {classify} from './src/lib/semantic/classifier.ts';
+          const client=new GigaClient(aiConfig(),async(...args)=>{const r=await transport(...args);if(args[0].endsWith('chat/completions')&&r.status===200){try{const result=JSON.parse(r.body.choices[0].message.content);if(result.decisions)console.log(JSON.stringify({event:'synthetic_verdict_reason',decisions:result.decisions}));}catch{}}return r;});
+          const fixtures=[{question:'Что нужно проверить на сайте?',words:['проверка Safari','проверка сафари']},{question:'Что нужно проверить на сайте?',words:['проверка Chrome','проверка хром']},{question:'Какие языки программирования поддерживать?',words:['Python','питон']}];
+          for(const f of fixtures)for(let round=0;round<2;round++){const result=await classify(client,await client.model(),f.question,f.words,f.words);console.log(JSON.stringify({event:'synthetic_context_result',fixture:f.words[0],round,matches:result.matches}));}
+          JS
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
