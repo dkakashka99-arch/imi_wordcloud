@@ -97,6 +97,19 @@ it('keeps POST independent of model quota errors, retries retained queue and app
   await semanticTick({
     model: async () => 'fixture-model',
     generate: async (_model, _prompt, input) => {
+      const judge = input as { pairs?: { id: string }[] };
+      if (judge.pairs)
+        return {
+          model: 'fixture',
+          usage: null,
+          result: {
+            decisions: judge.pairs.map((p) => ({
+              id: p.id,
+              reason: 'Эквиваленты по смыслу',
+              equivalent: true,
+            })),
+          },
+        };
       const data = input as {
         sources?: { id: string; text: string }[];
         candidates?: { id: string; text: string }[];
@@ -161,6 +174,19 @@ it('commits independently verified valid pairs despite an invalid mapping and is
   await semanticTick({
     model: async () => 'fixture',
     generate: async (_model, _prompt, input) => {
+      const judge = input as { pairs?: { id: string }[] };
+      if (judge.pairs)
+        return {
+          model: 'fixture',
+          usage: null,
+          result: {
+            decisions: judge.pairs.map((p) => ({
+              id: p.id,
+              reason: 'Эквиваленты по смыслу',
+              equivalent: true,
+            })),
+          },
+        };
       const data = input as {
         sources?: { id: string; text: string }[];
         candidates?: { id: string; text: string }[];
@@ -261,17 +287,11 @@ it('clears obsolete parse diagnostics after a successful negative classification
   );
   await semanticTick({
     model: async () => 'fixture',
-    generate: async (_model, _prompt, input) => ({
+    generate: async () => ({
       model: 'fixture',
       usage: null,
       result: {
-        matches: [
-          {
-            source: (input as { sources: { id: string }[] }).sources[0].id,
-            target: 'none',
-            relation: 'synonym',
-          },
-        ],
+        matches: [],
       },
     }),
   });

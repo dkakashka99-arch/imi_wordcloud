@@ -248,7 +248,17 @@ export class GigaClient {
     if (!selected || !ids.includes(selected)) throw new AiError('model_unavailable');
     return selected;
   }
-  async generate(model: string, system: string, data: unknown, schema: unknown) {
+  async generate(
+    model: string,
+    system: string,
+    data: unknown,
+    schema: unknown,
+    retryEmpty = true,
+  ): Promise<{
+    result: unknown;
+    usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+    model: string;
+  }> {
     const body = await this.api('chat/completions', {
       model,
       messages: [
@@ -268,7 +278,10 @@ export class GigaClient {
         r.data.choices[0].finish_reason === 'length' ? 'LENGTH' : 'REFUSAL_OR_OTHER',
       );
     const content = r.data.choices[0].message.content;
-    if (!content.trim()) throw new AiError('empty_generation', 'CONTENT_EMPTY');
+    if (!content.trim()) {
+      if (retryEmpty) return this.generate(model, system, data, schema, false);
+      throw new AiError('empty_generation', 'CONTENT_EMPTY');
+    }
     let result: unknown;
     try {
       result = JSON.parse(content);
