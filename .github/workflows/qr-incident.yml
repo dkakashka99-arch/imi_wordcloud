@@ -79,3 +79,5 @@ jobs:
           done
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts" "$RUNNER_TEMP/ssh/askpass"
+
+# Trace the exact QR-opening incident recorded at 18:25 Samara.
