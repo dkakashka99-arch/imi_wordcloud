@@ -150,6 +150,7 @@ try {
   console.log(
     JSON.stringify({
       event: 'soak_complete',
+      elapsedSeconds: Math.round((Date.now() - started) / 1000),
       durationSeconds: duration,
       participants: 250,
       requests,

@@ -252,3 +252,35 @@ it('reconsiders an unmatched answer when a new candidate arrives, with a bounded
     ).rows[0].status,
   ).toBe('review');
 });
+it('clears obsolete parse diagnostics after a successful negative classification', async () => {
+  const f = await fixture();
+  await f.send('отдельная мысль');
+  await database().query(
+    "UPDATE semantic_queue SET error='invalid_response',error_detail='CONTENT_JSON' WHERE question_id=$1",
+    [f.q],
+  );
+  await semanticTick({
+    model: async () => 'fixture',
+    generate: async (_model, _prompt, input) => ({
+      model: 'fixture',
+      usage: null,
+      result: {
+        matches: [
+          {
+            source: (input as { sources: { id: string }[] }).sources[0].id,
+            target: 'none',
+            relation: 'synonym',
+          },
+        ],
+      },
+    }),
+  });
+  expect(
+    (
+      await database().query(
+        'SELECT status,error,error_detail FROM semantic_queue WHERE question_id=$1',
+        [f.q],
+      )
+    ).rows[0],
+  ).toEqual({ status: 'review', error: 'no_equivalent', error_detail: null });
+});

@@ -50,6 +50,13 @@
       "when": 1792957773953,
       "tag": "0006_semantic_diagnostics",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792966773953,
+      "tag": "0007_clear_resolved_semantic_diagnostics",
+      "breakpoints": true
     }
   ]
 }

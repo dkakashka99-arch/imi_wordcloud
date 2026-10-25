@@ -267,9 +267,11 @@ export class GigaClient {
         'safety_or_incomplete',
         r.data.choices[0].finish_reason === 'length' ? 'LENGTH' : 'REFUSAL_OR_OTHER',
       );
+    const content = r.data.choices[0].message.content;
+    if (!content.trim()) throw new AiError('empty_generation', 'CONTENT_EMPTY');
     let result: unknown;
     try {
-      result = JSON.parse(r.data.choices[0].message.content);
+      result = JSON.parse(content);
     } catch {
       throw new AiError('invalid_response', 'CONTENT_JSON');
     }

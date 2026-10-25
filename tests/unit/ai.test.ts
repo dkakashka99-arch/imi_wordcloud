@@ -172,3 +172,20 @@ describe('GigaChat safety and transport', () => {
     }
   });
 });
+it('distinguishes an empty successful GigaChat completion from malformed JSON', async () => {
+  const c = new GigaClient(config, async (url) =>
+    url.includes('/oauth')
+      ? { status: 200, body: { access_token: 'synthetic', expires_at: Date.now() + 1800000 } }
+      : {
+          status: 200,
+          body: {
+            model: 'GigaChat-2',
+            choices: [{ message: { content: '' }, finish_reason: 'stop' }],
+          },
+        },
+  );
+  await expect(c.generate('GigaChat-2', 'test', {}, {})).rejects.toMatchObject({
+    code: 'empty_generation',
+    detail: 'CONTENT_EMPTY',
+  });
+});
