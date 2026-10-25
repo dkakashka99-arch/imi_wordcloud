@@ -6,50 +6,39 @@ on:
 permissions:
   contents: read
 jobs:
-  inspect:
+  prepare:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Public host key for owner verification
-        run: |
-          mkdir -m 700 -p "$RUNNER_TEMP/vps-ssh"
-          ssh-keyscan -T 10 -t ed25519 212.109.196.228 > "$RUNNER_TEMP/vps-ssh/known_hosts"
-          ssh-keygen -lf "$RUNNER_TEMP/vps-ssh/known_hosts"
-          echo 'Confirm fingerprint through FirstVDS or a trusted SSH client before setting VPS_HOST_KEY_SHA256.'
-      - name: Host verification and read-only Ubuntu inspection
+      - name: Prepare pinned deploy SSH
         env:
-          EXPECTED: SHA256:DaNhGMUPc+xtAt1RmS5Tcehv8Wuv313NG0a+zg0G+Wo
-          SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
-        run: |
-          if test -z "$EXPECTED" || test -z "$SSHPASS"; then
-            echo 'Waiting for VPS_HOST_KEY_SHA256 and VPS_BOOTSTRAP_PASSWORD. No authenticated connection attempted.'
-            exit 0
-          fi
-          actual=$(ssh-keygen -lf "$RUNNER_TEMP/vps-ssh/known_hosts" | awk '{print $2}')
-          test "$actual" = "$EXPECTED" || { echo 'Host key mismatch'; exit 1; }
-          sudo apt-get update -qq
-          sudo apt-get install -y sshpass
-          sshpass -e ssh -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" -o ConnectTimeout=15 root@212.109.196.228 'set -eu; cat /etc/os-release; uname -m; df -h /; free -m; command -v docker || true; ss -lnt'
-      - name: Bootstrap Ubuntu from reviewed repository scripts
-        env:
-          SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
-        run: |
-          test -n "$SSHPASS"
-          SSH_OPTS=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" -o ConnectTimeout=15)
-          sshpass -e scp "${SSH_OPTS[@]}" ops/bootstrap.sh root@212.109.196.228:/root/imi-bootstrap.sh
-          sshpass -e ssh "${SSH_OPTS[@]}" root@212.109.196.228 'set -eu; umask 077; test -f /root/imi-bootstrap-admin || ssh-keygen -q -t ed25519 -N "" -f /root/imi-bootstrap-admin -C imi-initial-admin; test -f /root/imi-bootstrap-ci || ssh-keygen -q -t ed25519 -N "" -f /root/imi-bootstrap-ci -C imi-ci-deploy; bash /root/imi-bootstrap.sh /root/imi-bootstrap-admin.pub /root/imi-bootstrap-ci.pub; docker version --format "{{.Server.Version}}"; docker compose version; systemctl is-active docker nginx ssh; id deploy; ufw status'
-      - name: Verify separate deploy account with temporary runner key
-        env:
-          SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           umask 077
-          sshpass -e ssh -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" root@212.109.196.228 'cat /root/imi-bootstrap-ci' > "$RUNNER_TEMP/vps-ssh/deploy-key"
-          ssh -i "$RUNNER_TEMP/vps-ssh/deploy-key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" deploy@212.109.196.228 'id; docker info --format "{{.ServerVersion}}"; test -d /opt/imi-wordcloud/shared; echo DEPLOY_KEY_LOGIN_OK'
-      - name: Cleanup
+          mkdir -p "$RUNNER_TEMP/ssh"
+          test -n "$DEPLOY_KEY"
+          printf '%s\n' "$DEPLOY_KEY" > "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'id; docker version --format "{{.Server.Version}}"; test -d /opt/imi-wordcloud/shared; echo DEPLOY_SECRET_OK'
+      - name: Download official GigaChat trust bundle
+        run: |
+          curl -fsS --proto '=https' --max-time 45 --retry 2 https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt -o root.pem
+          curl -fsS --proto '=https' --max-time 45 --retry 2 https://gu-st.ru/content/lending/russian_trusted_sub_ca_pem.crt -o sub.pem
+          openssl verify -CAfile root.pem sub.pem
+          cat root.pem sub.pem > russian-trusted-ca.pem
+      - name: Prepare server-only runtime credentials
+        env:
+          GIGA_KEY: ${{ secrets.GIGACHAT_AUTH_KEY }}
+        run: |
+          test -n "$GIGA_KEY"
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          scp "${SSH_OPTS[@]}" russian-trusted-ca.pem deploy@212.109.196.228:/opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem
+          scp "${SSH_OPTS[@]}" ops/initialize-production.py deploy@212.109.196.228:/opt/imi-wordcloud/shared/initialize-production.py
+          printf '%s' "$GIGA_KEY" | ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'umask 077; cat > /opt/imi-wordcloud/shared/gigachat-key'
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'python3 /opt/imi-wordcloud/shared/initialize-production.py'
+      - name: Cleanup SSH files
         if: always()
-        run: rm -f "$RUNNER_TEMP/vps-ssh/known_hosts" "$RUNNER_TEMP/vps-ssh/deploy-key"
-
-# Bootstrap reads all sshd output to avoid SIGPIPE under pipefail.
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
