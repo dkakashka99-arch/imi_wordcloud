@@ -18,7 +18,7 @@ jobs:
           echo 'Confirm fingerprint through FirstVDS or a trusted SSH client before setting VPS_HOST_KEY_SHA256.'
       - name: Host verification and read-only Ubuntu inspection
         env:
-          EXPECTED: ${{ vars.VPS_HOST_KEY_SHA256 }}
+          EXPECTED: SHA256:DaNhGMUPc+xtAt1RmS5Tcehv8Wuv313NG0a+zg0G+Wo
           SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
         run: |
           if test -z "$EXPECTED" || test -z "$SSHPASS"; then
