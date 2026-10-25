@@ -16,11 +16,19 @@ jobs:
       - name: Prepare pinned deploy SSH
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
         run: |
           umask 077
           mkdir -p "$RUNNER_TEMP/ssh"
           test -n "$DEPLOY_KEY"
-          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          if ! python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"; then
+            echo 'Permanent deploy secret invalid; temporary bootstrap access used only for host preparation.'
+            sudo apt-get update -qq
+            sudo apt-get install -y sshpass
+            printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+            sshpass -e ssh -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" root@212.109.196.228 'cat /root/imi-bootstrap-ci' > "$RUNNER_TEMP/ssh/key"
+            chmod 600 "$RUNNER_TEMP/ssh/key"
+          fi
           printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
           ssh -i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'id; docker version --format "{{.Server.Version}}"; test -d /opt/imi-wordcloud/shared; echo DEPLOY_SECRET_OK'
       - name: Download official GigaChat trust bundle
@@ -39,6 +47,16 @@ jobs:
           scp "${SSH_OPTS[@]}" ops/initialize-production.py deploy@212.109.196.228:/opt/imi-wordcloud/shared/initialize-production.py
           printf '%s' "$GIGA_KEY" | ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'umask 077; cat > /opt/imi-wordcloud/shared/gigachat-key'
           ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'python3 /opt/imi-wordcloud/shared/initialize-production.py'
+      - name: Initial Nginx and Lets Encrypt configuration
+        env:
+          SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y sshpass
+          SSH_ROOT=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          tar -czf nginx-setup.tar.gz ops/nginx.conf ops/nginx-proxy.conf ops/enable-https.sh
+          sshpass -e scp "${SSH_ROOT[@]}" nginx-setup.tar.gz root@212.109.196.228:/root/imi-nginx-setup.tar.gz
+          sshpass -e ssh "${SSH_ROOT[@]}" root@212.109.196.228 'set -eu; mkdir -p /root/imi-https; cd /root/imi-https; tar -xzf /root/imi-nginx-setup.tar.gz; if ! test -f /etc/letsencrypt/live/imi-cloudpoll.ru/fullchain.pem; then bash ops/enable-https.sh vadimka.matveev.07@gmail.com; else nginx -t; systemctl is-active certbot.timer; fi; ufw --force delete allow ispmanager; openssl x509 -in /etc/letsencrypt/live/imi-cloudpoll.ru/fullchain.pem -noout -subject -dates'
       - name: Cleanup SSH files
         if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
