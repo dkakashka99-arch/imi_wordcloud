@@ -9,19 +9,28 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
-      - name: Check public DNS and SSH without credentials
+      - name: DNS evidence from recursive and authoritative resolvers
+        run: |
+          for resolver in 1.1.1.1 8.8.8.8 ns1.firstvds.ru ns2.firstvds.ru; do
+            for record in "imi-cloudpoll.ru A" "imi-cloudpoll.ru NS" "imi-cloudpoll.ru AAAA" "www.imi-cloudpoll.ru A" "www.imi-cloudpoll.ru CNAME"; do
+              echo "Resolver $resolver / $record"
+              dig @"$resolver" $record +time=3 +tries=1 +noall +answer +comments || true
+            done
+          done
+      - name: Check public ports without credentials
         shell: python
         run: |
-          import socket
-          for host, port in [('212.109.196.228',22), ('imi-cloudpoll.ru',443)]:
+          import socket, urllib.request
+          for host, port in [('212.109.196.228',22),('imi-cloudpoll.ru',80),('imi-cloudpoll.ru',443)]:
               try:
-                  address = socket.gethostbyname(host)
-                  print(f'{host} resolves to {address}')
-                  with socket.create_connection((host,port),timeout=10) as connection:
+                  print(f'{host} resolves to {socket.gethostbyname(host)}')
+                  with socket.create_connection((host,port),timeout=8) as s:
                       print(f'{host}:{port} TCP reachable')
-                      if port == 22:
-                          print(connection.recv(256).decode(errors='replace').strip())
-              except Exception as error:
-                  print(f'{host}:{port}: {type(error).__name__}: {error}')
+                      if port == 22: print(s.recv(256).decode(errors='replace').strip())
+              except Exception as e: print(f'{host}:{port}: {type(e).__name__}: {e}')
+          try:
+              with urllib.request.urlopen('https://imi-cloudpoll.ru/api/ready',timeout=10) as response:
+                  print('HTTPS readiness:',response.status,response.read(512).decode())
+          except Exception as e: print('HTTPS readiness:',type(e).__name__,str(e))
