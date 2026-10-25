@@ -31,3 +31,5 @@ jobs:
 # Diagnose incomplete synthetic model response; no participant text or raw output.
 
 # Isolated compatibility experiment: retain full application validators, vary decoder enum only.
+
+# Isolated opaque-ID experiment: map validated IDs to original text before full application validation.
