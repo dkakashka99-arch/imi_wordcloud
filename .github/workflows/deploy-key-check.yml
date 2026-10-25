@@ -1,0 +1,26 @@
+name: Deploy key verification
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/deploy-key-check.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/keycheck"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/keycheck/key"
+          ssh-keygen -y -P '' -f "$RUNNER_TEMP/keycheck/key" > /dev/null
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/keycheck/known_hosts"
+          ssh -i "$RUNNER_TEMP/keycheck/key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/keycheck/known_hosts" deploy@212.109.196.228 'echo PERMANENT_DEPLOY_SECRET_OK'
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/keycheck/key" "$RUNNER_TEMP/keycheck/known_hosts"
