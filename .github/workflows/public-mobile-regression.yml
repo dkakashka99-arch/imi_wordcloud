@@ -44,3 +44,5 @@ jobs:
           name: public-mobile-qr-evidence
           path: public-mobile-evidence/
           retention-days: 7
+
+# Recheck native browser navigation after the HTTP2 transport mitigation.
