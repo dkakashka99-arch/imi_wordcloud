@@ -27,3 +27,5 @@ jobs:
           curl --silent --show-error --connect-timeout 5 --max-time 15 -o /dev/null -w 'HTTPS status: %{http_code}\\n' https://imi-cloudpoll.ru/api/ready
       - if: always()
         run: rm -f "$RUNNER_TEMP/keycheck/key" "$RUNNER_TEMP/keycheck/known_hosts"
+
+# Recheck transfer progress.
