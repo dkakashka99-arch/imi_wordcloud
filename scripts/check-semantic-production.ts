@@ -137,7 +137,7 @@ try {
       signal: AbortSignal.timeout(15000),
     });
   assert.equal((await outagePost('тест недоступности')).status, 200);
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
     await db.query(
       "UPDATE semantic_queue SET status='pending',available_at=now() WHERE question_id=$1",
       [outageQ],
