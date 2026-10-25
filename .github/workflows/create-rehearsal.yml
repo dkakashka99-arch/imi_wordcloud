@@ -1,0 +1,31 @@
+name: Prepare interactive production rehearsal
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/create-rehearsal.yml]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Create an isolated open rehearsal using organizer APIs
+        run: |
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          scp "${SSH_OPTS[@]}" ops/create-rehearsal.mjs deploy@212.109.196.228:/opt/imi-wordcloud/shared/create-rehearsal.mjs
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'set -eu; test -s /opt/imi-wordcloud/shared/organizer-password; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/create-rehearsal.mjs:/app/create-rehearsal.mjs:ro -v /opt/imi-wordcloud/shared/organizer-password:/run/organizer-password:ro tools node /app/create-rehearsal.mjs'
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
