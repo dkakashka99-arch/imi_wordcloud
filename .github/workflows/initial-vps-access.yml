@@ -20,7 +20,7 @@ jobs:
           umask 077
           mkdir -p "$RUNNER_TEMP/ssh"
           test -n "$DEPLOY_KEY"
-          printf '%s\n' "$DEPLOY_KEY" > "$RUNNER_TEMP/ssh/key"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
           printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
           ssh -i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'id; docker version --format "{{.Server.Version}}"; test -d /opt/imi-wordcloud/shared; echo DEPLOY_SECRET_OK'
       - name: Download official GigaChat trust bundle
