@@ -118,7 +118,34 @@ export async function classify(
     { question, sources: contract.sources, candidates: contract.candidates },
     contract.schema,
   );
-  const first = contract.decode(generated.result);
+  let first = contract.decode(generated.result);
+  // Some model versions answer only with identities despite equivalent candidates.
+  // One bounded narrower pass removes that escape hatch; an empty result remains valid.
+  if (!first.matches.length && (first.rejected.SELF_MATCH || 0) > 0) {
+    const recovered: Match[] = [];
+    for (const source of sources.filter((s) => s !== candidates[0])) {
+      const targets = candidates.filter((t) => t !== source);
+      if (!targets.length) continue;
+      const focused = semanticContract([source], targets);
+      const response = await ai.generate(
+        model,
+        semanticPrompt +
+          ' Самосовпадения исключены. Если ни один кандидат не эквивалентен, верни пустой matches.',
+        { question, sources: focused.sources, candidates: focused.candidates },
+        focused.schema,
+      );
+      const decoded = focused.decode(response.result);
+      recovered.push(...decoded.matches);
+    }
+    const decoded = contract.decode({
+      matches: recovered.map(({ source, target, relation }) => ({
+        source: contract.sources.find((s) => s.text === source)!.id,
+        target: contract.candidates.find((t) => t.text === target)!.id,
+        relation,
+      })),
+    });
+    first = { ...decoded, rejected: { ...first.rejected, ...decoded.rejected, FOCUSED_PASS: 1 } };
+  }
   if (!first.matches.length) return first;
   const verification = semanticContract(
     first.matches.map((m) => m.source),
