@@ -1,0 +1,53 @@
+{
+  "status": "OPEN: user mobile outage not reproduced; no confirmed root cause",
+  "productionRelease": "6245b7abf9fa91e369f088fafe2f42c5bc2b393e",
+  "transport": {
+    "appliedAtUTC": "2026-10-25T15:04:46Z",
+    "http2": true,
+    "sslBuffer": "4k",
+    "rollbackBackup": "/root/imi-nginx-before-transport-tuning.conf",
+    "verifiedRun": 40205291483
+  },
+  "local25MinuteObservation": {
+    "samples": 300,
+    "first": "2026-10-25T14:58:31.7294262Z",
+    "last": "2026-10-25T15:23:33.0612193Z",
+    "failures": 0,
+    "maxSeconds": 0.063196
+  },
+  "russianEyeballObservation": {
+    "first": "2026-10-25T15:12:12.671860+00:00",
+    "last": "2026-10-25T15:24:02.378301+00:00",
+    "rounds": 11,
+    "requests": 55,
+    "statusCounts": {
+      "200": 55
+    },
+    "tlsVerifiedCount": 55,
+    "maxMilliseconds": 433,
+    "networks": [
+      "MTS",
+      "Rostelecom",
+      "Vimpelcom"
+    ],
+    "measurementIds": [
+      "2pCT7yMX0PxC7d3KW00021NlQ",
+      "2239em8MwEgmYHIIh00021NlR",
+      "2xTUu3znF50MjnSyi00021NlS",
+      "2RQ1EWouHbqWWk63b00021NlT",
+      "2MbdFdUKH32KbW50E00021NlV",
+      "2rnPjYXU2CcTdvNtN00021NlW",
+      "2i5B0zR0bDzd4y9er00021NlX",
+      "2xndQh8gDlIHaobCc00021NlY",
+      "27dlhivrgyj6wVwr300021NlZ",
+      "2ZaGH1UlvxB9XFiNK00021Nla",
+      "2cXsesVOA54nUAyYM00021Nlc"
+    ]
+  },
+  "browserRegressionAfterTransport": 40205621640,
+  "sourcePR": 16,
+  "fullExternalObservation": {
+    "run": 40204720350,
+    "status": "still running at 15:25:55 UTC"
+  }
+}
