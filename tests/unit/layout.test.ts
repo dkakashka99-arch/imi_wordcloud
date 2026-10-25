@@ -7,11 +7,13 @@ describe('deterministic word layout', () => {
       count: 80 - i,
     }));
     const placed = layoutWords(words);
-    expect(placed.length).toBeGreaterThan(5);
+    expect(placed).toHaveLength(words.length);
     expect(layoutWords(words)).toEqual(placed);
     for (const a of placed) {
       expect(a.x - a.width / 2).toBeGreaterThanOrEqual(0);
       expect(a.x + a.width / 2).toBeLessThanOrEqual(1120);
+      expect(a.y - a.height / 2).toBeGreaterThanOrEqual(0);
+      expect(a.y + a.height / 2).toBeLessThanOrEqual(580);
       for (const b of placed) {
         if (a === b) continue;
         expect(
@@ -20,5 +22,12 @@ describe('deterministic word layout', () => {
         ).toBe(true);
       }
     }
+  });
+  it('keeps all ten long answers even when the spiral has no free position', () => {
+    const words = Array.from({ length: 10 }, (_, i) => ({
+      text: `длинный ответ участника номер ${i}`,
+      count: 1,
+    }));
+    expect(layoutWords(words).map((word) => word.text)).toEqual(words.map((word) => word.text));
   });
 });
