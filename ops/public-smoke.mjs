@@ -8,6 +8,7 @@ const db=new Pool({connectionString:process.env.DATABASE_URL,max:2});
 let id;
 try{
  assert.equal((await fetch(base+'/api/ready')).status,200);
+ for(let i=0;i<30;i++){if((await db.query("SELECT id FROM admins WHERE login='teacher' AND active")).rowCount)break;await new Promise(r=>setTimeout(r,1000));}
  const pw=(await readFile('/run/organizer-password','utf8')).trim();
  const login=await fetch(base+'/api/admin/login',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({login:'teacher',password:pw})});
  assert.equal(login.status,200,'Organizer login');

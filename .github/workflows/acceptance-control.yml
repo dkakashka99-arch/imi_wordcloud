@@ -1,0 +1,15 @@
+name: Correct acceptance test synchronization
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/acceptance-control.yml]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  cancel:
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/40188610350/cancel"
