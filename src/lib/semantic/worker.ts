@@ -37,7 +37,10 @@ export function validateMatches(value: unknown, sources: string[], candidates: s
   return parsed.matches;
 }
 
-export async function semanticTick(generator?: Pick<GigaClient, 'model' | 'generate'>) {
+export async function semanticTick(
+  generator?: Pick<GigaClient, 'model' | 'generate'>,
+  onlyQuestionId?: string,
+) {
   if (!generator && process.env.GIGACHAT_ENABLED !== 'true') return;
   const c = await database().connect();
   let locked = false;
@@ -48,7 +51,8 @@ export async function semanticTick(generator?: Pick<GigaClient, 'model' | 'gener
     locked = (await c.query('SELECT pg_try_advisory_lock(714021,4) locked')).rows[0].locked;
     if (!locked) return;
     const first = await c.query(
-      `SELECT sq.question_id,q.title,q.semantic_revision FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE sq.status='pending' AND sq.available_at<=now() AND NOT e.archived ORDER BY sq.available_at LIMIT 1`,
+      `SELECT sq.question_id,q.title,q.semantic_revision FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE sq.status='pending' AND sq.available_at<=now() AND NOT e.archived AND ($1::uuid IS NULL OR sq.question_id=$1) ORDER BY sq.available_at LIMIT 1`,
+      [onlyQuestionId || null],
     );
     if (!first.rowCount) return;
     const question = first.rows[0];

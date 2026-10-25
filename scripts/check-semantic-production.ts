@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
+import { database } from '../src/db/client';
 import { cases } from './check-semantic-live';
 import { classify } from '../src/lib/semantic/classifier';
-import { gigaClient } from '../src/lib/ai/client';
+import { AiError, gigaClient } from '../src/lib/ai/client';
+import { semanticTick } from '../src/lib/semantic/worker';
 import { sensitive } from '../src/lib/ai/validation';
 if (process.env.PRODUCTION_ACCEPTANCE !== 'true')
   throw new Error('Synthetic acceptance opt-in required');
@@ -112,6 +114,84 @@ try {
       }),
     );
   }
+  const outageQ = (
+    await db.query(
+      "INSERT INTO questions(event_id,title,status) VALUES($1,'Проверка при недоступности модели','open') RETURNING id",
+      [event],
+    )
+  ).rows[0].id;
+  await db.query('UPDATE question_audiences SET active=false WHERE event_id=$1', [event]);
+  await db.query(
+    'INSERT INTO question_audiences(event_id,question_id,audience_id,active) VALUES($1,$2,$3,true)',
+    [event, outageQ, audience],
+  );
+  const outagePost = async (text: string) =>
+    fetch(`${origin}/api/public/events/${slug}/student/submissions`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        'Content-Type': 'application/json',
+        Cookie: `mir_participant=${randomBytes(32).toString('hex')}`,
+      },
+      body: JSON.stringify({ questionId: outageQ, text, idempotencyKey: randomUUID() }),
+      signal: AbortSignal.timeout(15000),
+    });
+  assert.equal((await outagePost('тест недоступности')).status, 200);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await db.query(
+      "UPDATE semantic_queue SET status='pending',available_at=now() WHERE question_id=$1",
+      [outageQ],
+    );
+    await semanticTick(
+      {
+        model: async () => {
+          throw new AiError('unavailable');
+        },
+        generate: async () => {
+          throw new Error('Must not generate');
+        },
+      },
+      outageQ,
+    );
+    if (
+      (
+        await db.query(
+          "SELECT 1 FROM semantic_queue WHERE question_id=$1 AND error='unavailable'",
+          [outageQ],
+        )
+      ).rowCount
+    )
+      break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int n FROM semantic_queue WHERE question_id=$1 AND error='unavailable'",
+        [outageQ],
+      )
+    ).rows[0].n,
+    1,
+  );
+  assert.equal((await outagePost('приём продолжается')).status, 200);
+  assert.equal(
+    (await db.query('SELECT count(*)::int n FROM submissions WHERE question_id=$1', [outageQ]))
+      .rows[0].n,
+    2,
+  );
+  console.log(
+    JSON.stringify({
+      event: 'production_outage_acceptance',
+      injection: 'scoped worker API-unavailable failure',
+      accepted: 2,
+      pass: true,
+    }),
+  );
+  // Finish the isolated outage queue with an explicit test status; never touch other queues.
+  await db.query(
+    "UPDATE semantic_queue SET status='review',error='synthetic_outage_verified' WHERE question_id=$1",
+    [outageQ],
+  );
   // Diagnose the protected historic queue without changing real-event aliases/votes.
   const protectedQuestions = (
     await db.query(
@@ -181,4 +261,5 @@ try {
   await db.query("UPDATE questions SET status='paused' WHERE event_id=$1", [event]);
 } finally {
   await db.end();
+  await database().end();
 }
