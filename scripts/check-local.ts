@@ -24,8 +24,8 @@ try {
     'LOCAL TEST ONLY: PostgreSQL WASM, single connection; native PostgreSQL concurrency remains a CI gate.',
   );
   await run(['--import', 'tsx', 'scripts/migrate.ts']);
-  await run(['--import', 'tsx', 'scripts/seed.ts']);
-  await run(['--import', 'tsx', 'scripts/seed.ts']);
+  await run(['--import', 'tsx', 'scripts/seed.ts', 'ops/event-27-oct.json']);
+  await run(['--import', 'tsx', 'scripts/seed.ts', 'ops/event-27-oct.json']);
   await run(['node_modules/vitest/vitest.mjs', 'run', 'tests/integration']);
   await run(['--import', 'tsx', 'scripts/check-http.ts']);
 } finally {

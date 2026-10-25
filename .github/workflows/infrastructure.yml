@@ -1,0 +1,24 @@
+name: Infrastructure
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+permissions:
+  contents: read
+jobs:
+  containers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: for script in ops/*.sh; do bash -n "$script"; done
+      - name: Build and verify isolated production stack
+        run: bash ops/test-stack.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: infrastructure-test-evidence
+          path: infrastructure-results.txt
+          retention-days: 14

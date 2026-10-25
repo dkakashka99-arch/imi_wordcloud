@@ -15,3 +15,10 @@ Develop CI39997016904 attempt1 остановился на восьмимину�
 ## Оставшееся
 
 Production нет; main начальный README. Нужны VPS в России/домен, стоимость согласовать до покупки; Actions Secret не настраивает production. Личный портфолио-проект/PERS подтверждены. Не проверены физические устройства/проектор, сети РФ, нагрузка200–300/p95, native backup/restore. Dev audit разобрать до релиза (исторически9 findings; последний npm ci PR CI сообщил4 moderate), production audit0 — отдельная проверка.
+
+## Stage 5 — 24 October 2026
+
+Baseline: live develop 6b7336b34a7c668eef4df5535ece68f863bdafbc; main 6a04777d8e2c073d53541e2ce318b3859ca47766.
+Branch feature/05-production-infrastructure; see docs/PRODUCTION.md and STEP_05_REPORT.md.
+Local lint/types/12 unit/production build passed. Container evidence must come from Infrastructure CI (no local Docker).
+Next external step: owner FirstVDS session or VPS console bootstrap; choose existing free off-VPS backup target. No production deployment performed, no secrets requested in chat. Review actual PR/CI before enabling production.
