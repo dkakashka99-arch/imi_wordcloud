@@ -93,6 +93,7 @@ export const transport: Transport = (url, headers, body, config) =>
         const parts: Buffer[] = [];
         let size = 0;
         res.on('data', (part: Buffer) => {
+          if ((res.statusCode || 0) < 200 || (res.statusCode || 0) >= 300) return;
           size += part.length;
           if (size > 262144) {
             req.destroy();
@@ -101,6 +102,10 @@ export const transport: Transport = (url, headers, body, config) =>
         });
         res.on('end', () => {
           clearTimeout(timer);
+          if ((res.statusCode || 0) < 200 || (res.statusCode || 0) >= 300) {
+            resolve({ status: res.statusCode || 0, body: null });
+            return;
+          }
           let data: unknown;
           try {
             data = JSON.parse(Buffer.concat(parts).toString('utf8'));
