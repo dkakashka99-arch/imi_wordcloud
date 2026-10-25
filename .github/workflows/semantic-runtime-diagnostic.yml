@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: 8abc572a0cdfd3af9ffcdc87121759bad48d0aba
+          ref: cb4bf417dd1d620ebba70bb1ed6ad8b30aa35930
       - name: Diagnose runtime without secrets or participant originals
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -45,7 +45,7 @@ jobs:
           root=/opt/imi-wordcloud
           export RELEASE=$(cat "$root/shared/current-release")
           cd "$root/releases/$RELEASE"
-          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /tmp/classifier.ts:/app/src/lib/semantic/classifier.ts:ro -v /tmp/client.ts:/app/src/lib/ai/client.ts:ro -v /tmp/check-semantic-live.ts:/app/scripts/check-semantic-live.ts:ro -e GIGACHAT_MODEL=GigaChat-2-Pro tools sh -c 'failed=0; for round in 1 2 3; do node --import tsx scripts/check-semantic-live.ts || failed=1; done; exit "$failed"'
+          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /tmp/classifier.ts:/app/src/lib/semantic/classifier.ts:ro -v /tmp/client.ts:/app/src/lib/ai/client.ts:ro -v /tmp/check-semantic-live.ts:/app/scripts/check-semantic-live.ts:ro tools sh -c 'failed=0; for model in GigaChat-2-Pro GigaChat-2-Max; do for round in 1 2; do GIGACHAT_MODEL="$model" node --import tsx scripts/check-semantic-live.ts || failed=1; done; done; exit "$failed"'
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
