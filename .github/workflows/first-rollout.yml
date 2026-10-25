@@ -11,7 +11,7 @@ concurrency:
 jobs:
   rollout:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,20 +41,16 @@ jobs:
             sleep 10
           done
           exit 1
-      - name: Build and package first release off VPS
+      - name: Package exact tested source
         run: |
-          docker build --target runtime -t imi-wordcloud:$RELEASE .
-          docker build --target tools -t imi-wordcloud-tools:$RELEASE .
-          docker pull postgres:17-bookworm
-          docker save imi-wordcloud:$RELEASE imi-wordcloud-tools:$RELEASE postgres:17-bookworm | gzip > images.tar.gz
-          tar -czf release.tar.gz compose.production.yaml ops
-          sha256sum images.tar.gz release.tar.gz > SHA256SUMS
-      - name: Deploy exact main release through verified SSH
+          git archive --format=tar "$RELEASE" | gzip > source.tar.gz
+          sha256sum source.tar.gz > SHA256SUMS
+      - name: Build and deploy on VPS using direct registry access
         run: |
-          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=6 -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
           ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 "mkdir -p /opt/imi-wordcloud/incoming/$RELEASE /opt/imi-wordcloud/releases/$RELEASE"
-          scp "${SSH_OPTS[@]}" images.tar.gz release.tar.gz SHA256SUMS "deploy@212.109.196.228:/opt/imi-wordcloud/incoming/$RELEASE/"
-          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; gunzip -c images.tar.gz | docker load; tar -xzf release.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; bash /opt/imi-wordcloud/releases/$RELEASE/ops/deploy.sh $RELEASE; rm images.tar.gz release.tar.gz SHA256SUMS"
+          scp "${SSH_OPTS[@]}" source.tar.gz SHA256SUMS "deploy@212.109.196.228:/opt/imi-wordcloud/incoming/$RELEASE/"
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; tar -xzf source.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; cd /opt/imi-wordcloud/releases/$RELEASE; docker build --target runtime -t imi-wordcloud:$RELEASE .; docker build --target tools -t imi-wordcloud-tools:$RELEASE .; bash ops/deploy.sh $RELEASE; rm /opt/imi-wordcloud/incoming/$RELEASE/source.tar.gz /opt/imi-wordcloud/incoming/$RELEASE/SHA256SUMS"
       - name: Verify live GigaChat and prepare paused event
         run: |
           SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
