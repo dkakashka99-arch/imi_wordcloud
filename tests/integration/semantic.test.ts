@@ -115,6 +115,8 @@ it('keeps POST independent of model quota errors, retries retained queue and app
         candidates?: { id: string; text: string }[];
         proposals?: unknown[];
       };
+      if (!data.sources?.some((s) => s.text === 'платят хорошо'))
+        return { model: 'fixture', usage: null, result: { matches: [] } };
       const matches = data.proposals?.map((p) => {
         const m = p as { source: string; target: string; relation: string };
         return { source: m.source, target: m.target, relation: m.relation };
