@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import type { ParticipantState } from '@/lib/contracts';
+import { requestJson } from '@/lib/client-request';
 export function Participant({ slug, audience }: { slug: string; audience: string }) {
   const [data, setData] = useState<ParticipantState | null>(null),
     [text, setText] = useState(''),
@@ -11,16 +12,20 @@ export function Participant({ slug, audience }: { slug: string; audience: string
   const mutationVersion = useRef(0);
   const currentQuestion = useRef<string | null>(null);
   const pending = useRef<{ text: string; questionId: string; idempotencyKey: string } | null>(null);
+  const sendingRequest = useRef<AbortController | null>(null);
   const endpoint = `/api/public/events/${encodeURIComponent(slug)}/${encodeURIComponent(audience)}`;
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout>;
     let failures = 0;
+    const controller = new AbortController();
     async function refresh() {
       const version = mutationVersion.current;
       try {
-        const response = await fetch(endpoint, { cache: 'no-store' });
-        const result = await response.json();
+        const { response, data: result } = await requestJson<ParticipantState & { error?: string }>(
+          endpoint,
+          { cache: 'no-store', signal: controller.signal },
+        );
         if (!response.ok) {
           if (live && response.status === 404) {
             setData(null);
@@ -53,6 +58,8 @@ export function Participant({ slug, audience }: { slug: string; audience: string
     return () => {
       live = false;
       clearTimeout(timer);
+      controller.abort();
+      sendingRequest.current?.abort();
     };
   }, [endpoint]);
   async function send(event: React.FormEvent) {
@@ -69,12 +76,17 @@ export function Participant({ slug, audience }: { slug: string; audience: string
     )
       pending.current = { text, questionId: data.question.id, idempotencyKey: crypto.randomUUID() };
     try {
-      const response = await fetch(`${endpoint}/submissions`, {
+      sendingRequest.current = new AbortController();
+      const { response, data: result } = await requestJson<{
+        error?: string;
+        remaining: number;
+        duplicate: boolean;
+      }>(`${endpoint}/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(pending.current),
+        signal: sendingRequest.current.signal,
       });
-      const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Не удалось отправить ответ.');
       mutationVersion.current++;
       setData((previous) =>
@@ -88,6 +100,7 @@ export function Participant({ slug, audience }: { slug: string; audience: string
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Нет связи. Попробуйте ещё раз.');
     } finally {
+      sendingRequest.current = null;
       setSending(false);
     }
   }
