@@ -21,6 +21,7 @@ Verification on this branch:
 - HTTP: PASS cookie/POST/aggregate/idempotency/Origin/JSON/QR/pause/restart/admin auth/export controls.
 - integration salary5 + remote3 + independent concepts: PASS without moderator interaction.
 - injected provider quota failure then verified retry: PASS; accepted count and history retained. This is a fixture, not proof of live GigaChat.
+- CI run40209963273 passed both Chromium/WebKit semantic/visual checks and generated screenshots. All five requested resolutions were inspected for collisions/overflow; actual1920px/mobile screenshots reviewed. Two moderation tests failed because the role selector also matched Next route announcements; the selector is now scoped. Polling no longer clears submission validation errors. The next CI run must verify this correction and question switching.
 - Browser executables could not be downloaded in the local environment (truncated archive). Added real Playwright acceptance test for independent sessions, five salary variants and collision/overflow/screenshots at 1366,1920,2560,3840 and mobile390; CI must pass before delivery.
 - Production deploy/SHA, live unknown-variant classification, actual QR decode, 60-minute/200–300-participant soak: NOT YET VERIFIED.
 - Physical Russian no-VPN iPhone/Android networks: not available to the agent.

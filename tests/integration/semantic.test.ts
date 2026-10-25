@@ -83,6 +83,12 @@ it('keeps POST independent of model quota errors, retries retained queue and app
   const queued = await database().query('SELECT * FROM semantic_queue WHERE question_id=$1', [f.q]);
   expect(queued.rows[0]).toMatchObject({ status: 'pending', error: 'quota' });
   await f.send('отпуск');
+  await f.send('достойная оплата');
+  await database().query('INSERT INTO word_aliases(question_id,source,target) VALUES($1,$2,$3)', [
+    f.q,
+    'достойная оплата',
+    'платят хорошо',
+  ]);
   await database().query('UPDATE semantic_queue SET available_at=now() WHERE question_id=$1', [
     f.q,
   ]);
@@ -94,8 +100,8 @@ it('keeps POST independent of model quota errors, retries retained queue and app
     generate: async () => ({ result, usage: null, model: 'fixture-model' }),
   });
   const state = (await screenState(f.slug)).audiences[0];
-  expect(state.answerCount).toBe(3);
-  expect(state.words).toContainEqual({ text: 'зарплата', count: 2 });
+  expect(state.answerCount).toBe(4);
+  expect(state.words).toContainEqual({ text: 'зарплата', count: 3 });
   expect(state.words).toContainEqual({ text: 'отпуск', count: 1 });
   expect(
     (

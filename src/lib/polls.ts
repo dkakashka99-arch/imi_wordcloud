@@ -153,6 +153,14 @@ export async function submit(
             'INSERT INTO semantic_history(question_id,source,target,method,version) VALUES($1,$2,$3,$4,$5)',
             [q.id, key, category, 'dictionary', RULE_VERSION],
           );
+          await client.query(
+            'INSERT INTO semantic_history(question_id,source,target,method,version) SELECT question_id,source,$3,$4,$5 FROM word_aliases WHERE question_id=$1 AND target=$2',
+            [q.id, key, category, 'dictionary-flatten', RULE_VERSION],
+          );
+          await client.query(
+            'UPDATE word_aliases SET target=$3 WHERE question_id=$1 AND target=$2',
+            [q.id, key, category],
+          );
         } else if (!category && !known.rowCount && !priorClassification.rowCount) {
           await client.query(
             'INSERT INTO semantic_queue(question_id,source) VALUES($1,$2) ON CONFLICT DO NOTHING',

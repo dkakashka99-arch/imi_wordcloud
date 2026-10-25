@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { database } from '@/db/client';
 import { AiError, gigaClient, type GigaClient } from '@/lib/ai/client';
 import { sensitive } from '@/lib/ai/validation';
+import { deterministicCategory, RULE_VERSION } from './rules';
 
 const resultSchema = z
   .object({
@@ -56,6 +57,63 @@ export async function semanticTick(generator?: Pick<GigaClient, 'model' | 'gener
       [questionId],
     );
     sources = batch.rows.map((r) => r.source).filter((s) => !sensitive(s));
+    if (!sources.length) return;
+    // Existing answers are backfilled by migration. Apply known rules without provider work.
+    await c.query('BEGIN');
+    const lockedQuestion = (
+      await c.query('SELECT title,semantic_revision FROM questions WHERE id=$1 FOR UPDATE', [
+        questionId,
+      ])
+    ).rows[0];
+    question.title = lockedQuestion.title;
+    question.semantic_revision = lockedQuestion.semantic_revision;
+    const knownSources: string[] = [];
+    for (const source of sources) {
+      const known = await c.query(
+        'SELECT 1 FROM word_aliases WHERE question_id=$1 AND source=$2 UNION ALL SELECT 1 FROM semantic_history WHERE question_id=$1 AND source=$2 LIMIT 1',
+        [questionId, source],
+      );
+      let target = deterministicCategory(question.title, source);
+      if (!known.rowCount && !target) continue;
+      if (!known.rowCount && target) {
+        target =
+          (
+            await c.query('SELECT target FROM word_aliases WHERE question_id=$1 AND source=$2', [
+              questionId,
+              target,
+            ])
+          ).rows[0]?.target || target;
+        if (source !== target) {
+          await c.query(
+            'INSERT INTO word_aliases(question_id,source,target) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+            [questionId, source, target],
+          );
+          await c.query(
+            'INSERT INTO semantic_history(question_id,source,target,method,version) SELECT question_id,source,$3,$4,$5 FROM word_aliases WHERE question_id=$1 AND target=$2',
+            [questionId, source, target, 'dictionary-flatten', RULE_VERSION],
+          );
+          await c.query('UPDATE word_aliases SET target=$3 WHERE question_id=$1 AND target=$2', [
+            questionId,
+            source,
+            target,
+          ]);
+        }
+        await c.query(
+          'INSERT INTO semantic_history(question_id,source,target,method,version) VALUES($1,$2,$3,$4,$5)',
+          [questionId, source, target, 'dictionary', RULE_VERSION],
+        );
+      }
+      knownSources.push(source);
+    }
+    if (knownSources.length) {
+      await c.query(
+        "UPDATE semantic_queue SET status='completed',error=NULL WHERE question_id=$1 AND source=ANY($2::text[])",
+        [questionId, knownSources],
+      );
+      await c.query('UPDATE questions SET revision=revision+1 WHERE id=$1', [questionId]);
+    }
+    await c.query('COMMIT');
+    sources = sources.filter((source) => !knownSources.includes(source));
     if (!sources.length) return;
     // Lease survives restart. The advisory lock prevents another live worker stealing it.
     await c.query(
@@ -116,11 +174,21 @@ export async function semanticTick(generator?: Pick<GigaClient, 'model' | 'gener
         'INSERT INTO word_aliases(question_id,source,target) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING source',
         [questionId, match.source, match.target],
       );
-      if (inserted.rowCount)
+      if (inserted.rowCount) {
+        await c.query(
+          'INSERT INTO semantic_history(question_id,source,target,method,version) SELECT question_id,source,$3,$4,$5 FROM word_aliases WHERE question_id=$1 AND target=$2',
+          [questionId, match.source, match.target, 'gigachat-flatten', model],
+        );
+        await c.query('UPDATE word_aliases SET target=$3 WHERE question_id=$1 AND target=$2', [
+          questionId,
+          match.source,
+          match.target,
+        ]);
         await c.query(
           'INSERT INTO semantic_history(question_id,source,target,method,version) VALUES($1,$2,$3,$4,$5)',
           [questionId, match.source, match.target, 'gigachat-double-validation', model],
         );
+      }
     }
     await c.query(
       `UPDATE semantic_queue SET status='review',error=NULL WHERE question_id=$1 AND source=ANY($2::text[])`,

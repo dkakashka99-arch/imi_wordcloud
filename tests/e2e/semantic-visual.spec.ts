@@ -37,6 +37,7 @@ test('one permanent QR, automatic salary grouping and projector composition at t
   browser,
   page,
 }, testInfo) => {
+  test.setTimeout(120000);
   await page.goto(`/e/${slug}/screen`);
   const qr = page.getByRole('img', { name: 'QR-код для группы: Студенты' });
   await expect(qr).toBeVisible();
@@ -99,6 +100,7 @@ test('one permanent QR, automatic salary grouping and projector composition at t
     await request.close();
   }
   await expect(page.locator('.answer-stat strong')).toHaveText('37');
+  await page.waitForTimeout(900);
   for (const [width, height] of [
     [1366, 768],
     [1920, 1080],
@@ -134,5 +136,25 @@ test('one permanent QR, automatic salary grouping and projector composition at t
   await form.goto(`/e/${slug}/student`);
   await expect(form.getByRole('textbox')).toBeVisible();
   await form.screenshot({ path: testInfo.outputPath('participant-390.png'), fullPage: true });
+  await db.query("UPDATE questions SET status='paused',revision=revision+1 WHERE id=$1", [q]);
+  await expect(form.getByText('Опрос на паузе.', { exact: false })).toBeVisible();
+  const next = (
+    await db.query(
+      "INSERT INTO questions(event_id,title,status) VALUES($1,'Что помогает учиться?','open') RETURNING id",
+      [id],
+    )
+  ).rows[0].id;
+  await db.query('UPDATE question_audiences SET active=false WHERE question_id=$1', [q]);
+  await db.query(
+    'INSERT INTO question_audiences(event_id,question_id,audience_id,active) SELECT event_id,$2,audience_id,true FROM question_audiences WHERE question_id=$1',
+    [q, next],
+  );
+  await expect(form.getByRole('heading', { name: 'Что помогает учиться?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Что помогает учиться?' })).toBeVisible();
+  await expect(page.locator('svg.cloud text')).toHaveCount(0);
+  expect(await qr.getAttribute('src')).toBe(qrSource);
+  expect(
+    (await db.query('SELECT count(*)::int n FROM submissions WHERE question_id=$1', [q])).rows[0].n,
+  ).toBe(37);
   await phone.close();
 });

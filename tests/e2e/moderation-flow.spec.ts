@@ -60,7 +60,9 @@ test('moderation rejects HTML, hides and restores accepted text, CSV downloads a
   const payload = 'надежность';
   await phone.getByRole('textbox', { name: 'Ваш ответ' }).fill('<img src=x onerror=alert(1)>');
   await phone.getByRole('button', { name: 'Отправить' }).click();
-  await expect(phone.getByRole('alert')).toContainText('HTML');
+  await expect(phone.locator('.participant').getByRole('alert')).toContainText('HTML');
+  await phone.waitForTimeout(3500);
+  await expect(phone.locator('.participant').getByRole('alert')).toContainText('HTML');
   await phone.getByRole('textbox', { name: 'Ваш ответ', exact: true }).fill(payload);
   await phone.getByRole('button', { name: 'Отправить', exact: false }).click();
   await expect(phone.getByRole('status')).toContainText('Ответ принят');

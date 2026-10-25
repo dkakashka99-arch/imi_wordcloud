@@ -7,6 +7,7 @@ export function Participant({ slug, audience }: { slug: string; audience: string
   const [data, setData] = useState<ParticipantState | null>(null),
     [text, setText] = useState(''),
     [error, setError] = useState(''),
+    [networkError, setNetworkError] = useState(''),
     [notice, setNotice] = useState(''),
     [sending, setSending] = useState(false);
   const mutationVersion = useRef(0);
@@ -44,12 +45,12 @@ export function Participant({ slug, audience }: { slug: string; audience: string
             pending.current = null;
           }
           setData(result);
-          setError('');
+          setNetworkError('');
         }
         failures = 0;
       } catch (e) {
         failures++;
-        if (live) setError(e instanceof Error ? e.message : 'Нет связи.');
+        if (live) setNetworkError(e instanceof Error ? e.message : 'Нет связи.');
       } finally {
         if (live) timer = setTimeout(refresh, Math.min(30000, 3000 * 2 ** failures));
       }
@@ -128,7 +129,10 @@ export function Participant({ slug, audience }: { slug: string; audience: string
                 placeholder="Что для вас важно?"
                 maxLength={data?.question?.maxLength}
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setError('');
+                }}
                 disabled={sending || !data?.remaining}
                 required
               />
@@ -151,9 +155,9 @@ export function Participant({ slug, audience }: { slug: string; audience: string
             {notice}
           </p>
         )}
-        {error && (
+        {(error || networkError) && (
           <p role="alert" className="notice error">
-            {error}
+            {error || networkError}
           </p>
         )}
         <p className="footer">
