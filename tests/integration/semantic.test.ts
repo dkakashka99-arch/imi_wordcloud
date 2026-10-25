@@ -1,0 +1,113 @@
+import { afterAll, it, expect } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { database } from '../../src/db/client';
+import { createEvent, eventCommand, getEvent } from '../../src/lib/admin/events';
+import { moderate } from '../../src/lib/admin/moderation';
+import { submit, screenState } from '../../src/lib/polls';
+import { semanticTick } from '../../src/lib/semantic/worker';
+import { AiError } from '../../src/lib/ai/client';
+import { removeTestEvent } from '../../scripts/test-cleanup';
+const ids: string[] = [];
+afterAll(async () => {
+  for (const id of ids) await removeTestEvent(database(), id);
+  await database().end();
+});
+async function fixture() {
+  const slug = `semantic-${randomUUID()}`;
+  const { id } = await createEvent('Семантическая проверка', slug);
+  ids.push(id);
+  const event = await getEvent(id);
+  await eventCommand(id, {
+    action: 'addQuestion',
+    title: 'Что вы ожидаете от будущей работы?',
+    audienceIds: [event.audiences[0].id],
+    maxAnswers: 3,
+    maxLength: 60,
+  });
+  const q = (await getEvent(id)).questions[0].id;
+  await eventCommand(id, { action: 'activate', questionId: q });
+  const send = (text: string) =>
+    submit(slug, 'all', randomUUID(), { questionId: q, text, idempotencyKey: randomUUID() });
+  return { id, slug, q, send };
+}
+it('automatically groups five salary and three remote variants and preserves all originals and votes', async () => {
+  const f = await fixture();
+  const words = [
+    'ЗП',
+    'з/п',
+    'зарплата',
+    'заработная плата',
+    'оплата труда',
+    'удаленка',
+    'работа из дома',
+    'дистанционная работа',
+    'отпуск',
+    'карьера',
+    'обучение',
+  ];
+  for (const word of words) await f.send(word);
+  const state = (await screenState(f.slug)).audiences[0];
+  expect(state.answerCount).toBe(11);
+  expect(state.words).toContainEqual({ text: 'зарплата', count: 5 });
+  expect(state.words).toContainEqual({ text: 'удаленная работа', count: 3 });
+  for (const word of ['отпуск', 'карьера', 'обучение'])
+    expect(state.words).toContainEqual({ text: word, count: 1 });
+  expect(
+    (
+      await database().query(
+        'SELECT original_text FROM submissions WHERE question_id=$1 ORDER BY created_at',
+        [f.q],
+      )
+    ).rows.map((r) => r.original_text),
+  ).toEqual(words);
+  await moderate(f.id, f.q, { action: 'rules', premoderation: false, stopWords: [], aliases: [] });
+  await f.send('ЗП');
+  // Organizer undo is durable: dictionary never silently reinstates an audited override.
+  expect((await screenState(f.slug)).audiences[0].words).toContainEqual({ text: 'зп', count: 2 });
+  await removeTestEvent(database(), f.id);
+  ids.splice(ids.indexOf(f.id), 1);
+});
+it('keeps POST independent of model quota errors, retries retained queue and applies verified matches without losing votes', async () => {
+  const f = await fixture();
+  await f.send('зарплата');
+  await f.send('платят хорошо');
+  const failing = {
+    model: async () => {
+      throw new AiError('quota');
+    },
+    generate: async () => {
+      throw new Error('must not run');
+    },
+  };
+  await semanticTick(failing);
+  const queued = await database().query('SELECT * FROM semantic_queue WHERE question_id=$1', [f.q]);
+  expect(queued.rows[0]).toMatchObject({ status: 'pending', error: 'quota' });
+  await f.send('отпуск');
+  await f.send('достойная оплата');
+  await database().query('INSERT INTO word_aliases(question_id,source,target) VALUES($1,$2,$3)', [
+    f.q,
+    'достойная оплата',
+    'платят хорошо',
+  ]);
+  await database().query('UPDATE semantic_queue SET available_at=now() WHERE question_id=$1', [
+    f.q,
+  ]);
+  const result = {
+    matches: [{ source: 'платят хорошо', target: 'зарплата', relation: 'synonym' }],
+  };
+  await semanticTick({
+    model: async () => 'fixture-model',
+    generate: async () => ({ result, usage: null, model: 'fixture-model' }),
+  });
+  const state = (await screenState(f.slug)).audiences[0];
+  expect(state.answerCount).toBe(4);
+  expect(state.words).toContainEqual({ text: 'зарплата', count: 3 });
+  expect(state.words).toContainEqual({ text: 'отпуск', count: 1 });
+  expect(
+    (
+      await database().query('SELECT method,version FROM semantic_history WHERE question_id=$1', [
+        f.q,
+      ])
+    ).rows,
+  ).toContainEqual({ method: 'gigachat-double-validation', version: 'fixture-model' });
+});

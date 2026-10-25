@@ -109,3 +109,55 @@ jobs:
       - name: Remove SSH key
         if: always()
         run: rm -f "$RUNNER_TEMP/imi-ssh/key" "$RUNNER_TEMP/imi-ssh/known_hosts"
+  acceptance:
+    needs: deploy
+    if: github.event.workflow_run.name == 'Infrastructure'
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Configure pinned acceptance SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS || '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/acceptance-ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/acceptance-ssh/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/acceptance-ssh/known_hosts"
+      - name: Verify deployed SHA, live asynchronous GigaChat and 60-minute 250-participant acceptance
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '212.109.196.228' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -o pipefail
+          [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]]
+          ssh -i "$RUNNER_TEMP/acceptance-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/acceptance-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=6 -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "bash -s -- $RELEASE" <<'REMOTE' | tee acceptance-results.txt
+          set -Eeuo pipefail
+          release=$1
+          root=/opt/imi-wordcloud
+          test "$(cat "$root/shared/current-release")" = "$release"
+          cd "$root/releases/$release"
+          export RELEASE=$release
+          compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
+          app=$("${compose[@]}" ps -q app)
+          docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
+          "${compose[@]}" run --rm -T -e PRODUCTION_ACCEPTANCE=true tools node --import tsx scripts/soak-production.ts
+          test "$(cat "$root/shared/current-release")" = "$release"
+          docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
+          docker stats --no-stream --format 'container={{.Name}} memory={{.MemUsage}} cpu={{.CPUPerc}}' "$app"
+          REMOTE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-acceptance-evidence
+          path: acceptance-results.txt
+          retention-days: 14
+      - name: Remove acceptance SSH key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/acceptance-ssh/key" "$RUNNER_TEMP/acceptance-ssh/known_hosts"

@@ -93,6 +93,19 @@ export function Moderation({
         </button>
       </div>
       {data && (
+        <div className="notice" role="status">
+          Автогруппировка: в очереди {data.semantic.pending}, на проверку {data.semantic.review},
+          ошибок {data.semantic.errors}.{' '}
+          <button
+            className="text-button"
+            disabled={busy || archived}
+            onClick={() => void run({ action: 'retrySemantic' })}
+          >
+            Повторить обработку
+          </button>
+        </div>
+      )}
+      {data && (
         <>
           <form
             className="admin-form"

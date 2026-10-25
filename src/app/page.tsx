@@ -16,7 +16,7 @@ export default function Home() {
           Общее будущее.
         </h1>
         <p className="lead">
-          Что важно студентам и работодателям? Поделитесь своим мнением — и увидите, как
+          Что важно студентам в будущей работе? Поделитесь своим мнением — и увидите, как
           складывается общая картина.
         </p>
       </section>
@@ -27,14 +27,6 @@ export default function Home() {
           <p>Расскажите о том, что для вас важно в будущей работе.</p>
           <Link className="button" href="/e/mir-27-oct/student">
             Ответить на вопрос →
-          </Link>
-        </article>
-        <article className="card">
-          <p className="eyebrow">02 · Работодателям</p>
-          <h2>Каких сотрудников вы ищете?</h2>
-          <p>Назовите навыки и качества, которые цените в команде.</p>
-          <Link className="button secondary" href="/e/mir-27-oct/employer">
-            Поделиться мнением →
           </Link>
         </article>
       </section>

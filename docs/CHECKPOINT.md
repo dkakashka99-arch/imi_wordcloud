@@ -1,3 +1,7 @@
+# Active rework — 25 October 2026
+
+Branch feature/automatic-semantic-cloud from develop5d1a5aa. See REWORK_STATUS.md for verified results and outstanding release gates. Code implements automatic equivalence queue and single-student projector redesign. NOT production-ready until browser/CI/live-AI/soak evidence is complete. First unfinished action: open PR into develop and assess browser screenshots/CI. Preserve all real events including rehearsal-25-oct.
+
 # Checkpoint — production deployed, 25 October 2026
 
 imi_wordcloud only, repository dkakashka99-arch/imi_wordcloud (devwork). Do not touch IMI One.
