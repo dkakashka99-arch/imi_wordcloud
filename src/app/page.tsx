@@ -1,0 +1,48 @@
+import Link from 'next/link';
+export default function Home() {
+  return (
+    <main className="shell">
+      <header className="top">
+        <Link className="brand" href="/">
+          <b>мир</b> облако слов
+        </Link>
+        <span className="pill">Живой опрос</span>
+      </header>
+      <section className="hero">
+        <p className="eyebrow">Колледж МИР · 27 октября 2026</p>
+        <h1>
+          Разные ожидания.
+          <br />
+          Общее будущее.
+        </h1>
+        <p className="lead">
+          Что важно студентам и работодателям? Поделитесь своим мнением — и увидите, как
+          складывается общая картина.
+        </p>
+      </section>
+      <section className="cards">
+        <article className="card">
+          <p className="eyebrow">01 · Студентам</p>
+          <h2>Какую работу вы ждёте?</h2>
+          <p>Расскажите о том, что для вас важно в будущей работе.</p>
+          <Link className="button" href="/e/mir-27-oct/student">
+            Ответить на вопрос →
+          </Link>
+        </article>
+        <article className="card">
+          <p className="eyebrow">02 · Работодателям</p>
+          <h2>Каких сотрудников вы ищете?</h2>
+          <p>Назовите навыки и качества, которые цените в команде.</p>
+          <Link className="button secondary" href="/e/mir-27-oct/employer">
+            Поделиться мнением →
+          </Link>
+        </article>
+      </section>
+      <footer className="footer">
+        Участие без регистрации · Короткие слова и фразы ·{' '}
+        <Link href="/e/mir-27-oct/screen">Экран мероприятия</Link> ·{' '}
+        <Link href="/admin">Организаторам</Link>
+      </footer>
+    </main>
+  );
+}

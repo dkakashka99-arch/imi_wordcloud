@@ -1,0 +1,64 @@
+name: CI
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: mir
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: mir_wordcloud
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U mir -d mir_wordcloud"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://mir:ci-test-only@localhost:5432/mir_wordcloud
+      APP_ORIGIN: http://localhost:3000
+      GIGACHAT_ENABLED: 'false'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run db:migrate
+      - run: npm run test:integration
+      - run: npm run build
+      - run: npm run test:http
+      - name: Use HTTPS Ubuntu mirror for browser dependencies
+        run: |
+          # Azure's HTTP mirror intermittently stalls; keep normal APT signature/TLS checks.
+          # https://github.com/actions/runner-images/issues/14594
+          for mirror_list in /etc/apt/apt-mirrors.txt /etc/apt/apt-security-mirrors.txt; do
+            if test -f "$mirror_list"; then
+              sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$mirror_list"
+            fi
+          done
+          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "2";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network
+      - run: npx playwright install --with-deps chromium webkit
+        timeout-minutes: 8
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+      - run: npm audit --omit=dev --audit-level=high
