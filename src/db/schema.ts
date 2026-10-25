@@ -237,6 +237,7 @@ export const semanticQueue = pgTable(
     attempts: integer().default(0).notNull(),
     availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
     error: text(),
+    errorDetail: text('error_detail'),
   },
   (t) => [
     unique().on(t.questionId, t.source),
