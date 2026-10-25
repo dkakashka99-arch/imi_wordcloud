@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { database } from '../src/db/client';
 import { cases } from './check-semantic-live';
 import { classify } from '../src/lib/semantic/classifier';
-import { AiError, gigaClient } from '../src/lib/ai/client';
+import { AiError, gigaClient, semanticModelPreference } from '../src/lib/ai/client';
 import { semanticTick } from '../src/lib/semantic/worker';
 import { sensitive } from '../src/lib/ai/validation';
 if (process.env.PRODUCTION_ACCEPTANCE !== 'true')
@@ -137,7 +137,7 @@ try {
       signal: AbortSignal.timeout(15000),
     });
   assert.equal((await outagePost('тест недоступности')).status, 200);
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
     await db.query(
       "UPDATE semantic_queue SET status='pending',available_at=now() WHERE question_id=$1",
       [outageQ],
@@ -199,7 +199,7 @@ try {
     )
   ).rows;
   const ai = gigaClient(),
-    model = await ai.model();
+    model = await ai.model(semanticModelPreference());
   for (const q of protectedQuestions) {
     const sources = (
       await db.query(
@@ -242,6 +242,7 @@ try {
   console.log(
     JSON.stringify({
       event: 'production_semantic_complete',
+      cases: cases.length,
       slug,
       pending,
       failures,

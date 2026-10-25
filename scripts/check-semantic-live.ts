@@ -1,5 +1,5 @@
 // Only these synthetic fixtures may be logged; never read participant answers here.
-import { gigaClient, AiError } from '../src/lib/ai/client';
+import { gigaClient, AiError, semanticModelPreference } from '../src/lib/ai/client';
 import { classify } from '../src/lib/semantic/classifier';
 export const cases = [
   {
@@ -69,13 +69,25 @@ export const cases = [
     words: ['работа', 'работник'],
     same: false,
   },
+  {
+    name: 'chrome-transliteration',
+    question: 'Что нужно проверить на сайте?',
+    words: ['проверка Chrome', 'проверка хром'],
+    same: true,
+  },
+  {
+    name: 'programming-context',
+    question: 'Какие языки программирования поддерживать?',
+    words: ['Python', 'питон'],
+    same: true,
+  },
 ];
 export async function runLiveCases() {
   const client = gigaClient();
   let failures = 0;
   for (const fixture of cases) {
     try {
-      const model = await client.model();
+      const model = await client.model(semanticModelPreference());
       // All words are sources too: canonical self-match must never poison a real batch.
       const result = await classify(client, model, fixture.question, fixture.words, fixture.words);
       const root = (word: string) => result.matches.find((m) => m.source === word)?.target || word;

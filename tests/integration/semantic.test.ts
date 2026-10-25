@@ -97,11 +97,26 @@ it('keeps POST independent of model quota errors, retries retained queue and app
   await semanticTick({
     model: async () => 'fixture-model',
     generate: async (_model, _prompt, input) => {
+      const judge = input as { pairs?: { id: string }[] };
+      if (judge.pairs)
+        return {
+          model: 'fixture',
+          usage: null,
+          result: {
+            decisions: judge.pairs.map((p) => ({
+              id: p.id,
+              reason: 'Эквиваленты по смыслу',
+              equivalent: true,
+            })),
+          },
+        };
       const data = input as {
         sources?: { id: string; text: string }[];
         candidates?: { id: string; text: string }[];
         proposals?: unknown[];
       };
+      if (!data.sources?.some((s) => s.text === 'платят хорошо'))
+        return { model: 'fixture', usage: null, result: { matches: [] } };
       const matches = data.proposals?.map((p) => {
         const m = p as { source: string; target: string; relation: string };
         return { source: m.source, target: m.target, relation: m.relation };
@@ -161,6 +176,19 @@ it('commits independently verified valid pairs despite an invalid mapping and is
   await semanticTick({
     model: async () => 'fixture',
     generate: async (_model, _prompt, input) => {
+      const judge = input as { pairs?: { id: string }[] };
+      if (judge.pairs)
+        return {
+          model: 'fixture',
+          usage: null,
+          result: {
+            decisions: judge.pairs.map((p) => ({
+              id: p.id,
+              reason: 'Эквиваленты по смыслу',
+              equivalent: true,
+            })),
+          },
+        };
       const data = input as {
         sources?: { id: string; text: string }[];
         candidates?: { id: string; text: string }[];
@@ -251,4 +279,30 @@ it('reconsiders an unmatched answer when a new candidate arrives, with a bounded
       )
     ).rows[0].status,
   ).toBe('review');
+});
+it('clears obsolete parse diagnostics after a successful negative classification', async () => {
+  const f = await fixture();
+  await f.send('отдельная мысль');
+  await database().query(
+    "UPDATE semantic_queue SET error='invalid_response',error_detail='CONTENT_JSON' WHERE question_id=$1",
+    [f.q],
+  );
+  await semanticTick({
+    model: async () => 'fixture',
+    generate: async () => ({
+      model: 'fixture',
+      usage: null,
+      result: {
+        matches: [],
+      },
+    }),
+  });
+  expect(
+    (
+      await database().query(
+        'SELECT status,error,error_detail FROM semantic_queue WHERE question_id=$1',
+        [f.q],
+      )
+    ).rows[0],
+  ).toEqual({ status: 'review', error: 'no_equivalent', error_detail: null });
 });

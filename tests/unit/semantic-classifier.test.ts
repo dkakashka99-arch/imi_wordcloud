@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { AiError } from '../../src/lib/ai/client';
 import { semanticContract, classify } from '../../src/lib/semantic/classifier';
 it('reproduces legacy self matches without poisoning valid mappings or inventing IDs', () => {
   const c = semanticContract(
@@ -40,73 +41,159 @@ it('rejects cycles, chains and conflicting targets but retains independent corre
     { source: 'd', target: 'e', relation: 'synonym' },
   ]);
 });
-it('requires independent confirmation and prevents the verifier adding unproposed pairs', async () => {
-  const c = semanticContract(['a', 'b'], ['c', 'd']);
-  let calls = 0;
-  const ai = {
-    model: async () => 'test',
-    generate: async () => ({
-      result: {
-        matches:
-          calls++ === 0
-            ? [{ source: c.sources[0].id, target: c.candidates[0].id, relation: 'synonym' }]
-            : [{ source: c.sources[1].id, target: c.candidates[1].id, relation: 'synonym' }],
-      },
-      usage: null,
-      model: 'test',
-    }),
+function confirmed(input: unknown, equivalent = true) {
+  const data = input as { pairs: { id: string }[] };
+  return {
+    model: 'fixture',
+    usage: null,
+    result: {
+      decisions: data.pairs.map((p) => ({
+        id: p.id,
+        reason: 'Краткое смысловое обоснование',
+        equivalent,
+      })),
+    },
   };
-  expect((await classify(ai, 'test', 'question', ['a', 'b'], ['c', 'd'])).matches).toEqual([]);
-});
-it('recovers identity-only model output with a focused pass and independently verifies it', async () => {
-  const contract = semanticContract(['навигация', 'навигацич'], ['навигация', 'навигацич']);
-  let calls = 0;
+}
+it('requires an independent boolean verdict for the exact proposed pair', async () => {
+  const c = semanticContract(['a'], ['b']);
+  let call = 0;
   const ai = {
     model: async () => 'fixture',
-    generate: async (_model: string, _prompt: string, input: unknown) => {
-      calls++;
-      if (calls === 1)
+    generate: async () => ({
+      model: 'fixture',
+      usage: null,
+      result:
+        call++ === 0
+          ? {
+              matches: [
+                { source: c.sources[0].id, target: c.candidates[0].id, relation: 'synonym' },
+              ],
+            }
+          : { decisions: [{ id: 'invented', reason: 'Unknown pair', equivalent: true }] },
+    }),
+  };
+  expect((await classify(ai, 'fixture', 'question', ['a'], ['b'])).matches).toEqual([]);
+});
+it('honors explicit negative judgments without requiring empty mapping arrays', async () => {
+  const c = semanticContract(['стабильность'], ['заработок']);
+  let call = 0;
+  const ai = {
+    model: async () => 'fixture',
+    generate: async (_m: string, _p: string, input: unknown) =>
+      call++ === 0
+        ? {
+            model: 'fixture',
+            usage: null,
+            result: {
+              matches: [
+                { source: c.sources[0].id, target: c.candidates[0].id, relation: 'synonym' },
+              ],
+            },
+          }
+        : confirmed(input, false),
+  };
+  const result = await classify(ai, 'fixture', 'Что важно?', ['стабильность'], ['заработок']);
+  expect(result.matches).toEqual([]);
+  expect(result.affected).toEqual([]);
+});
+it('recovers identity-only output and verifies the focused pair independently', async () => {
+  const words = ['навигация', 'навигацич'];
+  const c = semanticContract(words, words);
+  let call = 0;
+  const ai = {
+    model: async () => 'fixture',
+    generate: async (_m: string, _p: string, input: unknown) => {
+      call++;
+      if (call === 1)
         return {
           model: 'fixture',
           usage: null,
           result: {
-            matches: contract.sources.map((s) => ({
-              source: s.id,
-              target: s.id,
-              relation: 'synonym',
-            })),
+            matches: c.sources.map((s) => ({ source: s.id, target: s.id, relation: 'synonym' })),
           },
         };
-      const data = input as { proposals?: { source: string; target: string; relation: string }[] };
+      if (call === 3) return confirmed(input);
       return {
         model: 'fixture',
         usage: null,
         result: {
-          matches: data.proposals?.map(({ source, target, relation }) => ({
-            source,
-            target,
-            relation,
-          })) || [
-            {
-              source: contract.sources[1].id,
-              target: contract.candidates[0].id,
-              relation: 'spelling',
-            },
+          matches: [{ source: c.sources[1].id, target: c.candidates[0].id, relation: 'spelling' }],
+        },
+      };
+    },
+  };
+  expect((await classify(ai, 'fixture', 'Что улучшить?', words, words)).matches).toEqual([
+    { source: 'навигацич', target: 'навигация', relation: 'spelling' },
+  ]);
+  expect(call).toBe(3);
+});
+it('keeps other verified pairs when one focused source returns an empty generation', async () => {
+  const words = ['канон', 'вариант', 'отдельно'];
+  const c = semanticContract(words, words);
+  let call = 0;
+  const ai = {
+    model: async () => 'fixture',
+    generate: async (_m: string, _p: string, input: unknown) => {
+      call++;
+      if (call === 1)
+        return {
+          model: 'fixture',
+          usage: null,
+          result: {
+            matches: c.sources.map((s) => ({ source: s.id, target: s.id, relation: 'synonym' })),
+          },
+        };
+      if (call === 3) throw new AiError('empty_generation', 'CONTENT_EMPTY');
+      if (call === 4) return confirmed(input);
+      return {
+        model: 'fixture',
+        usage: null,
+        result: {
+          matches: [{ source: c.sources[1].id, target: c.candidates[0].id, relation: 'synonym' }],
+        },
+      };
+    },
+  };
+  const result = await classify(ai, 'fixture', 'Вопрос', words, words);
+  expect(result.matches).toEqual([{ source: 'вариант', target: 'канон', relation: 'synonym' }]);
+  expect(result.affected).toContain('отдельно');
+});
+it('recovers an omitted source without discarding an already correct proposal', async () => {
+  const words = ['канон', 'вариант', 'другой вариант'];
+  const c = semanticContract(words, words);
+  let call = 0;
+  const ai = {
+    model: async () => 'fixture',
+    generate: async (_m: string, _p: string, input: unknown) => {
+      call++;
+      if (call === 3) return confirmed(input);
+      const index = call === 1 ? 1 : 2;
+      return {
+        model: 'fixture',
+        usage: null,
+        result: {
+          matches: [
+            { source: c.sources[index].id, target: c.candidates[0].id, relation: 'synonym' },
           ],
         },
       };
     },
   };
+  const result = await classify(ai, 'fixture', 'Вопрос', words, words);
+  expect(result.matches).toHaveLength(2);
+  expect(result.matches.every((m) => m.target === 'канон')).toBe(true);
+  expect(call).toBe(3);
+});
+it('represents a negative decision without inventing a none category', () => {
+  const c = semanticContract(['стабильность'], ['заработок']);
+  const result = c.decode({
+    matches: [{ source: c.sources[0].id, target: 'none', relation: 'synonym' }],
+  });
+  expect(result.matches).toEqual([]);
+  expect(result.affected).toEqual([]);
+  expect(result.rejected).toEqual({ NO_EQUIVALENT: 1 });
   expect(
-    (
-      await classify(
-        ai,
-        'fixture',
-        'Что улучшить?',
-        ['навигация', 'навигацич'],
-        ['навигация', 'навигацич'],
-      )
-    ).matches,
-  ).toEqual([{ source: 'навигацич', target: 'навигация', relation: 'spelling' }]);
-  expect(calls).toBe(3);
+    c.decode({ matches: [{ source: 'invented', target: 'none', relation: 'synonym' }] }).matches,
+  ).toEqual([]);
 });

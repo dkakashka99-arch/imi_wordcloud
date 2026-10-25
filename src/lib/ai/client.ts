@@ -54,6 +54,11 @@ export function aiConfig(): AiConfig {
     caFile: process.env.GIGACHAT_CA_BUNDLE || undefined,
   };
 }
+// Independent from organizer AI: the automatic classifier uses the model that
+// passed the contextual positive/negative regression suite with this API family.
+export function semanticModelPreference() {
+  return process.env.GIGACHAT_SEMANTIC_MODEL?.trim() || 'GigaChat-2-Pro';
+}
 export function availability() {
   try {
     aiConfig();
@@ -240,22 +245,33 @@ export class GigaClient {
     }
     throw new AiError('authorization');
   }
-  async model() {
+  async model(requested?: string) {
     const r = modelsSchema.safeParse(await this.api('models'));
     if (!r.success) throw new AiError('invalid_response', 'MODEL_ENVELOPE');
     const ids = r.data.data.map((m) => m.id);
-    const selected = this.config.model || ['GigaChat-2', 'GigaChat'].find((m) => ids.includes(m));
+    const selected =
+      requested || this.config.model || ['GigaChat-2', 'GigaChat'].find((m) => ids.includes(m));
     if (!selected || !ids.includes(selected)) throw new AiError('model_unavailable');
     return selected;
   }
-  async generate(model: string, system: string, data: unknown, schema: unknown) {
+  async generate(
+    model: string,
+    system: string,
+    data: unknown,
+    schema: unknown,
+    retryEmpty = true,
+  ): Promise<{
+    result: unknown;
+    usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+    model: string;
+  }> {
     const body = await this.api('chat/completions', {
       model,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: JSON.stringify(data) },
       ],
-      temperature: 0.1,
+      temperature: 0.0001,
       max_tokens: 1800,
       stream: false,
       response_format: { type: 'json_schema', schema, strict: true },
@@ -267,9 +283,14 @@ export class GigaClient {
         'safety_or_incomplete',
         r.data.choices[0].finish_reason === 'length' ? 'LENGTH' : 'REFUSAL_OR_OTHER',
       );
+    const content = r.data.choices[0].message.content;
+    if (!content.trim()) {
+      if (retryEmpty) return this.generate(model, system, data, schema, false);
+      throw new AiError('empty_generation', 'CONTENT_EMPTY');
+    }
     let result: unknown;
     try {
-      result = JSON.parse(r.data.choices[0].message.content);
+      result = JSON.parse(content);
     } catch {
       throw new AiError('invalid_response', 'CONTENT_JSON');
     }

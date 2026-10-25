@@ -135,6 +135,7 @@ describe('GigaChat safety and transport', () => {
         chats++;
         const b = JSON.parse(body!);
         expect(b.response_format.type).toBe('json_schema');
+        expect(b.temperature).toBe(0.0001);
         expect(b.response_format.schema).toEqual(
           responseSchema(
             'aliases',
@@ -171,4 +172,31 @@ describe('GigaChat safety and transport', () => {
       expect(chats).toBe(1);
     }
   });
+});
+it('distinguishes an empty successful GigaChat completion from malformed JSON', async () => {
+  const c = new GigaClient(config, async (url) =>
+    url.includes('/oauth')
+      ? { status: 200, body: { access_token: 'synthetic', expires_at: Date.now() + 1800000 } }
+      : {
+          status: 200,
+          body: {
+            model: 'GigaChat-2',
+            choices: [{ message: { content: '' }, finish_reason: 'stop' }],
+          },
+        },
+  );
+  await expect(c.generate('GigaChat-2', 'test', {}, {})).rejects.toMatchObject({
+    code: 'empty_generation',
+    detail: 'CONTENT_EMPTY',
+  });
+});
+it('selects the explicit semantic model without changing organizer model discovery', async () => {
+  const c = new GigaClient(config, async (url) =>
+    url.includes('/oauth')
+      ? { status: 200, body: { access_token: 'synthetic', expires_at: Date.now() + 1800000 } }
+      : { status: 200, body: { data: [{ id: 'GigaChat-2' }, { id: 'GigaChat-2-Pro' }] } },
+  );
+  expect(await c.model()).toBe('GigaChat-2');
+  expect(await c.model('GigaChat-2-Pro')).toBe('GigaChat-2-Pro');
+  await expect(c.model('unavailable')).rejects.toMatchObject({ code: 'model_unavailable' });
 });

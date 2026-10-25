@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { database } from '@/db/client';
-import { AiError, gigaClient, type GigaClient } from '@/lib/ai/client';
+import { AiError, gigaClient, semanticModelPreference, type GigaClient } from '@/lib/ai/client';
 import { sensitive } from '@/lib/ai/validation';
 import { deterministicCategory, RULE_VERSION } from './rules';
 import { classify } from './classifier';
@@ -137,7 +137,7 @@ export async function semanticTick(
     );
     const candidates: string[] = rows.rows.map((r) => r.text).filter((s) => !sensitive(s));
     const ai = generator || gigaClient(),
-      model = await ai.model();
+      model = await ai.model(generator ? undefined : semanticModelPreference());
     const classification = await classify(ai, model, question.title, sources, candidates);
     const { matches } = classification;
     console.info(
@@ -186,7 +186,7 @@ export async function semanticTick(
       }
     }
     await c.query(
-      `UPDATE semantic_queue SET status='review',error='no_equivalent' WHERE question_id=$1 AND source=ANY($2::text[])`,
+      `UPDATE semantic_queue SET status='review',error='no_equivalent',error_detail=NULL WHERE question_id=$1 AND source=ANY($2::text[])`,
       [questionId, sources],
     );
     await c.query(
