@@ -1,0 +1,44 @@
+name: Public VPS acceptance
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/public-acceptance.yml]
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure pinned permanent deploy key
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+      - name: Wait for initial publication
+        run: |
+          for attempt in $(seq 1 100); do
+            if curl -fsS --max-time 5 https://imi-cloudpoll.ru/api/ready >/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 1
+      - name: Verify real public HTTP flow and 300 synthetic participants
+        run: |
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          scp "${SSH_OPTS[@]}" ops/public-smoke.mjs deploy@212.109.196.228:/opt/imi-wordcloud/shared/public-smoke.mjs
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'set -eu; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/public-smoke.mjs:/app/public-smoke.mjs:ro -v /opt/imi-wordcloud/shared/organizer-password:/run/organizer-password:ro tools node --import tsx /app/public-smoke.mjs' | tee public-acceptance.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-production-acceptance
+          path: public-acceptance.txt
+          retention-days: 14
+      - name: Cleanup runner key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
