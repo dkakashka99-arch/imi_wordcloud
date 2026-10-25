@@ -44,3 +44,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: rm -f "$RUNNER_TEMP/vps-ssh/known_hosts"
+
+# Bootstrap reads all sshd output to avoid SIGPIPE under pipefail.
