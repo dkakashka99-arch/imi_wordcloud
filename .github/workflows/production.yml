@@ -1,7 +1,7 @@
 name: Production
 on:
   workflow_run:
-    workflows: [CI, Infrastructure]
+    workflows: [CI]
     types: [completed]
     branches: [main]
 permissions:
@@ -111,7 +111,6 @@ jobs:
         run: rm -f "$RUNNER_TEMP/imi-ssh/key" "$RUNNER_TEMP/imi-ssh/known_hosts"
   acceptance:
     needs: deploy
-    if: github.event.workflow_run.name == 'Infrastructure'
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 80
@@ -147,6 +146,7 @@ jobs:
           compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
           app=$("${compose[@]}" ps -q app)
           docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
+          "${compose[@]}" run --rm -T -e PRODUCTION_ACCEPTANCE=true tools node --import tsx scripts/check-semantic-production.ts
           "${compose[@]}" run --rm -T -e PRODUCTION_ACCEPTANCE=true tools node --import tsx scripts/soak-production.ts
           test "$(cat "$root/shared/current-release")" = "$release"
           docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"

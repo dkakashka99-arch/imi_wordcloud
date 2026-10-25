@@ -8,7 +8,16 @@ describe('automatic semantic safety', () => {
       expect(deterministicCategory(question, word)).toBe('зарплата');
     for (const word of ['удалёнка', 'работа из дома', 'дистанционная работа'])
       expect(deterministicCategory(question, word)).toBe('удаленная работа');
-    for (const word of ['отпуск', 'карьера', 'обучение', 'стабильность'])
+    for (const word of [
+      'отпуск',
+      'карьера',
+      'обучение',
+      'стабильность',
+      'высокий заработок',
+      'большая зарплата',
+      'достойный доход',
+      'коллектив',
+    ])
       expect(deterministicCategory(question, word)).toBeNull();
     expect(deterministicCategory('Какие слова вы знаете?', 'ЗП')).toBeNull();
   });

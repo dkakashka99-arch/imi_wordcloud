@@ -93,19 +93,24 @@ export const transport: Transport = (url, headers, body, config) =>
         const parts: Buffer[] = [];
         let size = 0;
         res.on('data', (part: Buffer) => {
+          if ((res.statusCode || 0) < 200 || (res.statusCode || 0) >= 300) return;
           size += part.length;
           if (size > 262144) {
             req.destroy();
-            reject(new AiError('invalid_response'));
+            reject(new AiError('invalid_response', 'HTTP_BODY_LIMIT'));
           } else parts.push(part);
         });
         res.on('end', () => {
           clearTimeout(timer);
+          if ((res.statusCode || 0) < 200 || (res.statusCode || 0) >= 300) {
+            resolve({ status: res.statusCode || 0, body: null });
+            return;
+          }
           let data: unknown;
           try {
             data = JSON.parse(Buffer.concat(parts).toString('utf8'));
           } catch {
-            reject(new AiError('invalid_response'));
+            reject(new AiError('invalid_response', 'HTTP_BODY_JSON'));
             return;
           }
           resolve({ status: res.statusCode || 0, body: data });
@@ -186,7 +191,7 @@ export class GigaClient {
         this.checkStatus(r.status);
         const t = tokenSchema.safeParse(r.body);
         if (!t.success || t.data.expires_at <= Date.now() + 60000)
-          throw new AiError('invalid_response');
+          throw new AiError('invalid_response', 'OAUTH_ENVELOPE');
         this.token = { value: t.data.access_token, expires: t.data.expires_at };
         return t.data.access_token;
       }
