@@ -54,7 +54,7 @@ jobs:
         run: |
           umask 077
           mkdir -p "$RUNNER_TEMP/imi-ssh"
-          printf '%s\n' "$DEPLOY_SSH_KEY" > "$RUNNER_TEMP/imi-ssh/key"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/imi-ssh/key"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/imi-ssh/known_hosts"
       - name: Upload and deploy
         env:
