@@ -42,10 +42,11 @@ jobs:
           export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release)
           echo "CURRENT_PRODUCTION_RELEASE=$RELEASE"
           docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml ps
-          docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml exec -T db psql -U mir -d mir_wordcloud -v ON_ERROR_STOP=1 -c "SELECT e.slug,q.title,q.status FROM events e JOIN questions q ON q.event_id=e.id WHERE e.slug='mir-27-oct' ORDER BY q.title; SELECT count(*) AS real_event_answers FROM submissions WHERE event_id=(SELECT id FROM events WHERE slug='mir-27-oct'); SELECT count(*) AS remaining_rehearsal_events FROM events WHERE rehearsal; SELECT login,active FROM admins;"
+          docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml exec -T db psql -U mir -d mir_wordcloud -v ON_ERROR_STOP=1 -c "SELECT e.slug,q.title,q.status FROM events e JOIN questions q ON q.event_id=e.id WHERE e.slug='mir-27-oct' ORDER BY q.title; SELECT count(*) AS real_event_answers FROM submissions WHERE event_id=(SELECT id FROM events WHERE slug='mir-27-oct'); SELECT count(*) AS remaining_rehearsal_events FROM events WHERE rehearsal; SELECT login,active FROM admins;" </dev/null
           test -s /opt/imi-wordcloud/shared/organizer-password
           test "$(stat -c %a /opt/imi-wordcloud/shared/app.env)" = 600
           test "$(stat -c %a /opt/imi-wordcloud/shared/compose.env)" = 600
+          echo 'RUNTIME_SECRET_FILE_PERMISSIONS_VERIFIED=600'
           cat /opt/imi-wordcloud/shared/offsite-backup-7d20b913ffa348586261fcbfb79240253089107b
           ss -lnt
           REMOTE
