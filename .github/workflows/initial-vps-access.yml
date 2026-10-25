@@ -8,8 +8,11 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Public host key for owner verification
         run: |
           mkdir -m 700 -p "$RUNNER_TEMP/vps-ssh"
@@ -30,6 +33,14 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y sshpass
           sshpass -e ssh -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" -o ConnectTimeout=15 root@212.109.196.228 'set -eu; cat /etc/os-release; uname -m; df -h /; free -m; command -v docker || true; ss -lnt'
+      - name: Bootstrap Ubuntu from reviewed repository scripts
+        env:
+          SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+        run: |
+          test -n "$SSHPASS"
+          SSH_OPTS=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" -o ConnectTimeout=15)
+          sshpass -e scp "${SSH_OPTS[@]}" ops/bootstrap.sh root@212.109.196.228:/root/imi-bootstrap.sh
+          sshpass -e ssh "${SSH_OPTS[@]}" root@212.109.196.228 'set -eu; umask 077; test -f /root/imi-bootstrap-admin || ssh-keygen -q -t ed25519 -N "" -f /root/imi-bootstrap-admin -C imi-initial-admin; test -f /root/imi-bootstrap-ci || ssh-keygen -q -t ed25519 -N "" -f /root/imi-bootstrap-ci -C imi-ci-deploy; bash /root/imi-bootstrap.sh /root/imi-bootstrap-admin.pub /root/imi-bootstrap-ci.pub; docker version --format "{{.Server.Version}}"; docker compose version; systemctl is-active docker nginx ssh; id deploy; ufw status'
       - name: Cleanup
         if: always()
         run: rm -f "$RUNNER_TEMP/vps-ssh/known_hosts"
