@@ -2,22 +2,9 @@ import { normalizeWord } from '../normalize';
 
 export const RULE_VERSION = 'career-equivalence-v1';
 const families: [string, string[]][] = [
-  [
-    'зарплата',
-    [
-      'зп',
-      'з/п',
-      'з.п.',
-      'зарплата',
-      'заработная плата',
-      'оплата труда',
-      'высокий заработок',
-      'большая зарплата',
-      'достойный доход',
-    ],
-  ],
+  ['зарплата', ['зп', 'з/п', 'з.п.', 'зарплата', 'заработная плата', 'оплата труда']],
   ['удаленная работа', ['удаленка', 'удаленная работа', 'дистанционная работа', 'работа из дома']],
-  ['хороший коллектив', ['коллектив', 'хороший коллектив', 'хорошая команда', 'дружные коллеги']],
+  ['хороший коллектив', ['хороший коллектив', 'хорошая команда', 'дружные коллеги']],
 ];
 export function deterministicCategory(question: string, input: string): string | null {
   // Scope the dictionary to career questions; do not equate these phrases in arbitrary polls.

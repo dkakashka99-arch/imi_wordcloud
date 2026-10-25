@@ -72,10 +72,11 @@ try {
   }
   let failures = 0;
   for (const fixture of fixtures) {
-    await db.query('UPDATE question_audiences SET active=(question_id=$2) WHERE event_id=$1', [
-      event,
-      fixture.q,
-    ]);
+    await db.query('UPDATE question_audiences SET active=false WHERE event_id=$1', [event]);
+    await db.query(
+      'UPDATE question_audiences SET active=true WHERE event_id=$1 AND question_id=$2',
+      [event, fixture.q],
+    );
     const response = await fetch(`${origin}/api/public/events/${slug}/screen`, {
       signal: AbortSignal.timeout(15000),
     });
@@ -128,7 +129,8 @@ try {
   assert.equal(failures, 0);
   // Keep the Safari question selected for a human/browser visual check.
   const safari = fixtures.find((f) => f.name === 'safari')!;
-  await db.query('UPDATE question_audiences SET active=(question_id=$2) WHERE event_id=$1', [
+  await db.query('UPDATE question_audiences SET active=false WHERE event_id=$1', [event]);
+  await db.query('UPDATE question_audiences SET active=true WHERE event_id=$1 AND question_id=$2', [
     event,
     safari.q,
   ]);
