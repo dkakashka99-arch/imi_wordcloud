@@ -1,0 +1,44 @@
+name: Finish initial publication
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/finish-publication.yml]
+permissions:
+  contents: read
+jobs:
+  finish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Normalize official CA bundle with explicit PEM boundaries
+        run: |
+          curl -fsS --proto '=https' --max-time 45 --retry 2 https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt -o root.pem
+          curl -fsS --proto '=https' --max-time 45 --retry 2 https://gu-st.ru/content/lending/russian_trusted_sub_ca_pem.crt -o sub.pem
+          openssl verify -CAfile root.pem sub.pem
+          openssl x509 -in root.pem -out russian-trusted-ca.pem
+          openssl x509 -in sub.pem >> russian-trusted-ca.pem
+          timeout 25 openssl s_client -connect ngw.devices.sberbank.ru:9443 -servername ngw.devices.sberbank.ru -CAfile russian-trusted-ca.pem -verify_return_error -brief </dev/null
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          scp "${SSH_OPTS[@]}" russian-trusted-ca.pem deploy@212.109.196.228:/opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'timeout 25 openssl s_client -connect ngw.devices.sberbank.ru:9443 -servername ngw.devices.sberbank.ru -CAfile /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem -verify_return_error -brief </dev/null'
+      - name: Prepare paused event and organizer independently of AI
+        run: |
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'set -eu; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T tools npm run db:seed -- ops/event-27-oct.json; if ! test -s /opt/imi-wordcloud/shared/organizer-password; then umask 077; openssl rand -base64 24 > /opt/imi-wordcloud/shared/organizer-password.pending; docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T tools npm run admin:create -- teacher < /opt/imi-wordcloud/shared/organizer-password.pending; mv /opt/imi-wordcloud/shared/organizer-password.pending /opt/imi-wordcloud/shared/organizer-password; fi'
+      - name: Real GigaChat smoke on VPS with TLS verification
+        run: |
+          ssh -i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'set -eu; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T tools node --import tsx scripts/check-gigachat.ts'
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
