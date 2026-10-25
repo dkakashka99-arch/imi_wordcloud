@@ -54,6 +54,11 @@ export function aiConfig(): AiConfig {
     caFile: process.env.GIGACHAT_CA_BUNDLE || undefined,
   };
 }
+// Independent from organizer AI: the automatic classifier uses the model that
+// passed the contextual positive/negative regression suite with this API family.
+export function semanticModelPreference() {
+  return process.env.GIGACHAT_SEMANTIC_MODEL?.trim() || 'GigaChat-2-Pro';
+}
 export function availability() {
   try {
     aiConfig();
@@ -240,11 +245,12 @@ export class GigaClient {
     }
     throw new AiError('authorization');
   }
-  async model() {
+  async model(requested?: string) {
     const r = modelsSchema.safeParse(await this.api('models'));
     if (!r.success) throw new AiError('invalid_response', 'MODEL_ENVELOPE');
     const ids = r.data.data.map((m) => m.id);
-    const selected = this.config.model || ['GigaChat-2', 'GigaChat'].find((m) => ids.includes(m));
+    const selected =
+      requested || this.config.model || ['GigaChat-2', 'GigaChat'].find((m) => ids.includes(m));
     if (!selected || !ids.includes(selected)) throw new AiError('model_unavailable');
     return selected;
   }

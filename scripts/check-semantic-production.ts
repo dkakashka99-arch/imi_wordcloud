@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { database } from '../src/db/client';
 import { cases } from './check-semantic-live';
 import { classify } from '../src/lib/semantic/classifier';
-import { AiError, gigaClient } from '../src/lib/ai/client';
+import { AiError, gigaClient, semanticModelPreference } from '../src/lib/ai/client';
 import { semanticTick } from '../src/lib/semantic/worker';
 import { sensitive } from '../src/lib/ai/validation';
 if (process.env.PRODUCTION_ACCEPTANCE !== 'true')
@@ -199,7 +199,7 @@ try {
     )
   ).rows;
   const ai = gigaClient(),
-    model = await ai.model();
+    model = await ai.model(semanticModelPreference());
   for (const q of protectedQuestions) {
     const sources = (
       await db.query(

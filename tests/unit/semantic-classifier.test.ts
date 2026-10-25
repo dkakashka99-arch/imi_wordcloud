@@ -185,3 +185,15 @@ it('recovers an omitted source without discarding an already correct proposal', 
   expect(result.matches.every((m) => m.target === 'канон')).toBe(true);
   expect(call).toBe(3);
 });
+it('represents a negative decision without inventing a none category', () => {
+  const c = semanticContract(['стабильность'], ['заработок']);
+  const result = c.decode({
+    matches: [{ source: c.sources[0].id, target: 'none', relation: 'synonym' }],
+  });
+  expect(result.matches).toEqual([]);
+  expect(result.affected).toEqual([]);
+  expect(result.rejected).toEqual({ NO_EQUIVALENT: 1 });
+  expect(
+    c.decode({ matches: [{ source: 'invented', target: 'none', relation: 'synonym' }] }).matches,
+  ).toEqual([]);
+});
