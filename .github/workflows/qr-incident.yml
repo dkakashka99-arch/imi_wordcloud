@@ -1,0 +1,70 @@
+name: Diagnose QR navigation timeout
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/qr-incident.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Inspect server and enable privacy preserving timing diagnostics
+        env:
+          VPS_PASSWORD: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+        run: |
+          umask 077
+          cat > "$RUNNER_TEMP/ssh/askpass" <<'EOF'
+          #!/bin/sh
+          printf '%s\n' "$VPS_PASSWORD"
+          EOF
+          chmod 700 "$RUNNER_TEMP/ssh/askpass"
+          export SSH_ASKPASS="$RUNNER_TEMP/ssh/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=imi:0
+          setsid -w ssh -T -o PubkeyAuthentication=no -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" root@212.109.196.228 'bash -se' <<'REMOTE'
+          uptime
+          free -m
+          df -h /
+          systemctl is-active nginx docker
+          docker inspect --format '{{.Name}} status={{.State.Status}} restarts={{.RestartCount}} health={{.State.Health.Status}}' imi-wordcloud-app-1 imi-wordcloud-db-1
+          ufw status
+          python3 - <<'PY'
+          from pathlib import Path
+          from collections import Counter
+          p=Path('/var/log/nginx/error.log')
+          counts=Counter()
+          if p.exists():
+              for line in p.read_text(errors='replace').splitlines()[-500:]:
+                  for text in ['upstream timed out','connect() failed','SSL_do_handshake() failed','client prematurely closed connection','worker_connections are not enough','too many open files','limiting requests','limiting connections']:
+                      if text in line: counts[text]+=1
+          print('NGINX_ERROR_CATEGORIES',dict(counts))
+          p=Path('/etc/nginx/sites-available/imi-wordcloud')
+          backup=Path('/root/imi-nginx-before-qr-diagnostics.conf')
+          if not backup.exists(): backup.write_text(p.read_text()); backup.chmod(0o600)
+          Path('/etc/nginx/conf.d/00-imi-diagnostic.conf').write_text('log_format imi_diagnostic escape=json \'{"at":"$time_iso8601","method":"$request_method","uri":"$uri","status":"$status","seconds":"$request_time","upstream":"$upstream_status","upstream_seconds":"$upstream_response_time","bytes":"$body_bytes_sent","tls":"$ssl_protocol"}\';\n')
+          p.write_text(p.read_text().replace('access_log off;','access_log /var/log/nginx/imi-wordcloud-diagnostic.log imi_diagnostic;'))
+          PY
+          nginx -t
+          systemctl reload nginx
+          echo PRIVACY_TIMING_LOG_ENABLED_NO_IP_NO_QUERY_NO_COOKIES_NO_BODY
+          REMOTE
+      - name: Measure public QR navigation and health sequence
+        run: |
+          for path in / /e/mir-27-oct/screen /api/public/events/mir-27-oct/student/qr /e/mir-27-oct/student /api/public/events/mir-27-oct/student / /e/mir-27-oct/employer /api/ready; do
+            echo "ROUTE=$path"
+            curl -4 -sS --connect-timeout 5 --max-time 20 -o /dev/null -w 'status=%{http_code} dns=%{time_namelookup} connect=%{time_connect} tls=%{time_appconnect} first_byte=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' "https://imi-cloudpoll.ru$path"
+          done
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts" "$RUNNER_TEMP/ssh/askpass"
