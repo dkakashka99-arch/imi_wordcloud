@@ -43,22 +43,33 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           from collections import Counter
+          from datetime import datetime,timedelta
+          import json
+          cutoff=datetime.now()-timedelta(minutes=35)
+          errors=Counter()
           p=Path('/var/log/nginx/error.log')
-          counts=Counter()
           if p.exists():
-              for line in p.read_text(errors='replace').splitlines()[-500:]:
+              for line in p.read_text(errors='replace').splitlines()[-2000:]:
+                  try:
+                      if datetime.strptime(line[:19],'%Y/%m/%d %H:%M:%S') < cutoff: continue
+                  except ValueError: continue
                   for text in ['upstream timed out','connect() failed','SSL_do_handshake() failed','client prematurely closed connection','worker_connections are not enough','too many open files','limiting requests','limiting connections']:
-                      if text in line: counts[text]+=1
-          print('NGINX_ERROR_CATEGORIES',dict(counts))
-          p=Path('/etc/nginx/sites-available/imi-wordcloud')
-          backup=Path('/root/imi-nginx-before-qr-diagnostics.conf')
-          if not backup.exists(): backup.write_text(p.read_text()); backup.chmod(0o600)
-          Path('/etc/nginx/conf.d/00-imi-diagnostic.conf').write_text('log_format imi_diagnostic escape=json \'{"at":"$time_iso8601","method":"$request_method","uri":"$uri","status":"$status","seconds":"$request_time","upstream":"$upstream_status","upstream_seconds":"$upstream_response_time","bytes":"$body_bytes_sent","tls":"$ssl_protocol"}\';\n')
-          p.write_text(p.read_text().replace('access_log off;','access_log /var/log/nginx/imi-wordcloud-diagnostic.log imi_diagnostic;'))
+                      if text in line: errors[text]+=1
+          print('RECENT_NGINX_ERROR_CATEGORIES',dict(errors))
+          p=Path('/var/log/nginx/imi-wordcloud-diagnostic.log')
+          records=[]
+          if p.exists():
+              for line in p.read_text(errors='replace').splitlines()[-2000:]:
+                  try: records.append(json.loads(line))
+                  except ValueError: pass
+          print('REQUEST_STATUS_COUNTS',dict(Counter(r['status'] for r in records)))
+          slow=[r for r in records if float(r.get('seconds','0'))>2 or r['status'] not in ['200','304','301','302','307','308']]
+          print('SLOW_OR_FAILED_REQUESTS',json.dumps(slow[-40:],ensure_ascii=False))
+          print('RECENT_PAGE_REQUESTS',json.dumps([r for r in records if r['uri'].startswith('/e/') or r['uri']=='/'][-30:],ensure_ascii=False))
           PY
           nginx -t
           systemctl reload nginx
-          echo PRIVACY_TIMING_LOG_ENABLED_NO_IP_NO_QUERY_NO_COOKIES_NO_BODY
+          echo PRIVACY_DIAGNOSTIC_TRACE_READ_COMPLETE
           REMOTE
       - name: Measure public QR navigation and health sequence
         run: |
