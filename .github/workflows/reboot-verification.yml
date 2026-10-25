@@ -1,0 +1,67 @@
+name: Verify VPS reboot and persisted answer
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/reboot-verification.yml]
+permissions:
+  contents: read
+jobs:
+  reboot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Wait for both automatic production callbacks to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in $(seq 1 150); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_run&per_page=30")
+            if printf '%s' "$runs" | jq -e '[.workflow_runs[] | select(.name=="Production" and .head_sha=="84ff46af7e25b88277cd05a1f8f2e4ee0042cb06")] | length>=2 and all(.[]; .conclusion=="success")' >/dev/null; then exit 0; fi
+            sleep 10
+          done
+          echo 'Automatic production deployment has not completed successfully'; exit 1
+      - name: Validate fixture and record boot identity
+        run: |
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'test "$(cat /opt/imi-wordcloud/shared/current-release)" = 84ff46af7e25b88277cd05a1f8f2e4ee0042cb06; test -s /opt/imi-wordcloud/shared/offsite-backup-84ff46af7e25b88277cd05a1f8f2e4ee0042cb06; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/persistence-smoke.mjs:/app/persistence-smoke.mjs:ro -v /opt/imi-wordcloud/shared/persistence:/run/persistence tools node --import tsx /app/persistence-smoke.mjs verify'
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'cat /proc/sys/kernel/random/boot_id' > "$RUNNER_TEMP/boot-before"
+      - name: Reboot only after successful backup and release
+        env:
+          VPS_PASSWORD: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+        run: |
+          umask 077
+          cat > "$RUNNER_TEMP/ssh/askpass" <<'EOF'
+          #!/bin/sh
+          printf '%s\n' "$VPS_PASSWORD"
+          EOF
+          chmod 700 "$RUNNER_TEMP/ssh/askpass"
+          export SSH_ASKPASS="$RUNNER_TEMP/ssh/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=imi:0
+          setsid -w ssh -n -o PubkeyAuthentication=no -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" root@212.109.196.228 'set -eu; systemctl is-enabled docker nginx certbot.timer; systemd-run --unit=imi-wordcloud-reboot --on-active=5s /usr/bin/systemctl reboot'
+      - name: Confirm new boot and public health
+        run: |
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          for attempt in $(seq 1 90); do
+            if ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'cat /proc/sys/kernel/random/boot_id' > "$RUNNER_TEMP/boot-after" 2>/dev/null && ! cmp -s "$RUNNER_TEMP/boot-before" "$RUNNER_TEMP/boot-after" && curl -fsS --max-time 5 https://imi-cloudpoll.ru/api/ready; then
+              echo 'VPS_REBOOT_CONFIRMED: boot identity changed, SSH and HTTPS restored'
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+      - name: Verify persisted answer and remove only synthetic fixture
+        run: |
+          ssh -i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'set -eu; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/persistence-smoke.mjs:/app/persistence-smoke.mjs:ro -v /opt/imi-wordcloud/shared/persistence:/run/persistence tools node --import tsx /app/persistence-smoke.mjs cleanup; rm /opt/imi-wordcloud/shared/persistence/fixture.json; docker ps --format "{{.Names}} {{.Status}}"; ss -lnt'
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts" "$RUNNER_TEMP/ssh/askpass"
