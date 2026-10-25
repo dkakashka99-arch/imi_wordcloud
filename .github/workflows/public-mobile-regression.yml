@@ -1,0 +1,36 @@
+name: Public mobile QR regression
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/public-mobile-regression.yml]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Use official HTTPS Ubuntu mirror
+        run: |
+          for f in /etc/apt/apt-mirrors.txt /etc/apt/apt-security-mirrors.txt; do
+            if test -f "$f"; then sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$f"; fi
+          done
+          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "2";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network
+      - run: npx playwright install --with-deps chromium webkit
+        timeout-minutes: 8
+      - name: Real public iPhone WebKit and Android Chromium QR navigation
+        run: node ops/public-mobile-regression.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-mobile-qr-evidence
+          path: public-mobile-evidence/
+          retention-days: 7
