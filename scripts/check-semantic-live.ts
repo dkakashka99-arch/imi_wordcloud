@@ -69,6 +69,18 @@ export const cases = [
     words: ['работа', 'работник'],
     same: false,
   },
+  {
+    name: 'chrome-transliteration',
+    question: 'Что нужно проверить на сайте?',
+    words: ['проверка Chrome', 'проверка хром'],
+    same: true,
+  },
+  {
+    name: 'programming-context',
+    question: 'Какие языки программирования поддерживать?',
+    words: ['Python', 'питон'],
+    same: true,
+  },
 ];
 export async function runLiveCases() {
   const client = gigaClient();

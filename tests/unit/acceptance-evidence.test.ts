@@ -2,7 +2,13 @@ import { expect, it } from 'vitest';
 import { verifyAcceptance } from '../../scripts/check-acceptance-evidence.mjs';
 const records = [
   ...Array.from({ length: 12 }, () => ({ event: 'production_semantic_case', pass: true })),
-  { event: 'production_semantic_complete', failures: 0, pending: 0, protectedEventUnchanged: true },
+  {
+    event: 'production_semantic_complete',
+    cases: 12,
+    failures: 0,
+    pending: 0,
+    protectedEventUnchanged: true,
+  },
   { event: 'production_outage_acceptance', pass: true },
   { event: 'live_classification', verified: true },
   {

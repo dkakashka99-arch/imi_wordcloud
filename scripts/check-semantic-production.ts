@@ -242,6 +242,7 @@ try {
   console.log(
     JSON.stringify({
       event: 'production_semantic_complete',
+      cases: cases.length,
       slug,
       pending,
       failures,

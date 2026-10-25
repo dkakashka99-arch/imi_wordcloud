@@ -14,6 +14,11 @@ export function verifyAcceptance(text) {
     cases.length >= 12 && cases.every((r) => r.pass === true),
     'All semantic scenarios must actually run',
   );
+  const summary = records.find((r) => r.event === 'production_semantic_complete');
+  assert(
+    summary && cases.length === summary.cases,
+    'All declared semantic scenarios must be present',
+  );
   assert(
     records.some(
       (r) =>

@@ -265,7 +265,7 @@ export class GigaClient {
         { role: 'system', content: system },
         { role: 'user', content: JSON.stringify(data) },
       ],
-      temperature: 0.1,
+      temperature: 0.0001,
       max_tokens: 1800,
       stream: false,
       response_format: { type: 'json_schema', schema, strict: true },
