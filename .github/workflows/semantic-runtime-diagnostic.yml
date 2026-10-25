@@ -1,4 +1,4 @@
-name: Semantic production end-to-end evidence
+name: Synthetic structured JSON diagnosis
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -8,7 +8,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,63 +25,36 @@ jobs:
           ssh -T -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -s' <<'REMOTE'
           set -eu
           root=/opt/imi-wordcloud
-          expected=174f8b9dc4dba5b43479e035231c6631161b54fe
-          for attempt in $(seq 1 80); do
-            test "$(cat "$root/shared/current-release")" != "$expected" || break
-            sleep 10
-          done
           export RELEASE=$(cat "$root/shared/current-release")
-          test "$RELEASE" = "$expected"
+          echo "release=$RELEASE"
           cd "$root/releases/$RELEASE"
           compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
           app=$("${compose[@]}" ps -q app)
-          docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
-          "${compose[@]}" run --rm -T -v /opt/imi-wordcloud/shared/semantic-recovery-pr19-cohort.json:/run/cohort.json:ro tools node --import tsx --input-type=module <<'JS'
+          docker exec "$app" node -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:Boolean(process.env.GIGACHAT_AUTH_KEY||process.env.GIGACHAT_AUTH_KEY_FILE)}))'
+          test "$RELEASE" = 174f8b9dc4dba5b43479e035231c6631161b54fe
+          "${compose[@]}" run --rm -T tools node --import tsx --input-type=module <<'JS'
+          import {Pool} from 'pg';import assert from 'node:assert/strict';
           import {cases} from './scripts/check-semantic-live.ts';
-          import {Pool} from 'pg';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {createHash} from 'node:crypto';
-          const before=JSON.parse(readFileSync('/run/cohort.json','utf8'));
+          import {GigaClient,aiConfig,transport} from './src/lib/ai/client.ts';
+          import {classify} from './src/lib/semantic/classifier.ts';
           const db=new Pool({connectionString:process.env.DATABASE_URL,max:2});
-          const keys=before.cohort.map(r=>r.key);let rows=[];
-          for(let attempt=0;attempt<90;attempt++){
-            rows=(await db.query("SELECT md5(sq.question_id::text||':'||sq.source) key,sq.status,sq.error,sq.error_detail,sq.attempts FROM semantic_queue sq WHERE md5(sq.question_id::text||':'||sq.source)=ANY($1::text[])",[keys])).rows;
-            if(rows.length===keys.length&&!rows.some(r=>r.status==='pending'))break;
-            await new Promise(r=>setTimeout(r,2000));
+          const questions=(await db.query("SELECT DISTINCT q.id,q.title FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE e.slug LIKE 'semantic-acceptance-%' AND e.title='GigaChat synthetic acceptance' AND sq.error_detail='CONTENT_JSON'")).rows;
+          console.log(JSON.stringify({event:'synthetic_json_diagnosis',questions:questions.length}));
+          for(const q of questions){
+            const originals=(await db.query('SELECT original_text FROM submissions WHERE question_id=$1 ORDER BY created_at',[q.id])).rows.map(r=>r.original_text);
+            const fixture=cases.find(f=>JSON.stringify([f.words[0],...f.words])===JSON.stringify(originals));assert(fixture,'Not an owned synthetic fixture');
+            const sources=(await db.query("SELECT source FROM semantic_queue WHERE question_id=$1 AND error_detail='CONTENT_JSON'",[q.id])).rows.map(r=>r.source);
+            const candidates=(await db.query('SELECT COALESCE(wa.target,s.canonical_key) text,count(*) n FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 GROUP BY 1 ORDER BY n DESC,text',[q.id])).rows.map(r=>r.text);
+            const ai=new GigaClient(aiConfig(),async(...args)=>{
+              const r=await transport(...args);
+              if(args[0].endsWith('chat/completions')&&r.status===200){const choice=r.body?.choices?.[0];const content=choice?.message?.content;let valid=false;try{JSON.parse(content);valid=true;}catch{}
+                console.log(JSON.stringify({event:'synthetic_content_shape',case:fixture.name,valid,finish:choice?.finish_reason,length:typeof content==='string'?content.length:null,fenced:typeof content==='string'&&content.trim().startsWith('```'),bom:typeof content==='string'&&content.charCodeAt(0)===65279,...(!valid?{syntheticContent:content}: {})}));}
+              return r;
+            });
+            for(let round=0;round<3;round++)try{const result=await classify(ai,await ai.model(),q.title,sources,candidates);console.log(JSON.stringify({event:'synthetic_json_result',case:fixture.name,round,matches:result.matches.length,rejected:result.rejected}));}catch(e){console.log(JSON.stringify({event:'synthetic_json_failure',case:fixture.name,round,code:e.code||e.name,detail:e.detail}));}
           }
-          const originals=(await db.query("SELECT count(*)::int n,md5(coalesce(string_agg(id::text||original_text||canonical_key,'|' ORDER BY id),'')) checksum FROM submissions WHERE created_at<=$1",[before.cutoff])).rows[0];
-          const aliases=(await db.query("SELECT md5(coalesce(string_agg(wa.question_id::text||wa.source||wa.target,'|' ORDER BY wa.question_id,wa.source),'')) checksum FROM word_aliases wa JOIN questions q ON q.id=wa.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct'")).rows[0].checksum;
-          const groups={};for(const r of rows){const protectedEvent=before.cohort.find(c=>c.key===r.key).protected;const key=JSON.stringify({protected:protectedEvent,status:r.status,error:r.error,error_detail:r.error_detail});groups[key]=(groups[key]||0)+1;}
-          const migrationHashes=(await db.query('SELECT hash FROM drizzle.__drizzle_migrations')).rows.map(r=>r.hash);
-          const migrations=['drizzle/0005_retry_semantic_decoder.sql','drizzle/0006_semantic_diagnostics.sql'].map(path=>({path,applied:migrationHashes.includes(createHash('sha256').update(readFileSync(path)).digest('hex'))}));
-          console.log(JSON.stringify({event:'recovery_after',cohort:keys.length,rows:rows.length,pending:rows.filter(r=>r.status==='pending').length,groups:Object.entries(groups).map(([key,count])=>({...JSON.parse(key),count})),originalVotes:originals.n,originalsUnchanged:JSON.stringify(originals)===JSON.stringify(before.originals),protectedAliasesUnchanged:aliases===before.protectedAliases,migrations}));
-          console.log(JSON.stringify({event:'queue_after',rows:(await db.query('SELECT status,error,error_detail,count(*)::int n,max(attempts) max_attempts FROM semantic_queue GROUP BY 1,2,3')).rows}));
-          assert.deepEqual(originals,before.originals);assert.equal(aliases,before.protectedAliases);assert.equal(rows.length,keys.length);assert.equal(rows.some(r=>r.status==='pending'),false);assert(migrations.every(m=>m.applied));
-          let fixtureEvent;let questions=[];
-          for(let attempt=0;attempt<180;attempt++){
-            fixtureEvent=(await db.query("SELECT id,slug FROM events WHERE slug LIKE 'semantic-acceptance-%' AND title='GigaChat synthetic acceptance' AND rehearsal AND created_at>$1 ORDER BY created_at DESC LIMIT 1",[before.cutoff])).rows[0];
-            if(fixtureEvent){questions=(await db.query('SELECT q.id,q.title,q.status,(SELECT json_agg(s.original_text ORDER BY s.created_at) FROM submissions s WHERE s.question_id=q.id) originals FROM questions q WHERE q.event_id=$1',[fixtureEvent.id])).rows;if(questions.length===cases.length+1&&questions.every(q=>q.status==='paused'))break;}
-            await new Promise(r=>setTimeout(r,2000));
-          }
-          assert(fixtureEvent,'Synthetic production event missing');assert.equal(questions.length,cases.length+1);assert(questions.every(q=>q.status==='paused'),'Production semantic acceptance has not finished successfully');
-          let acceptedVotes=0;
-          for(let i=0;i<cases.length;i++){
-            const fixture=cases[i];const expected=[fixture.words[0],...fixture.words];
-            const matching=questions.filter(q=>q.title===fixture.question&&JSON.stringify(q.originals)===JSON.stringify(expected));assert.equal(matching.length,1);const q=matching[0];
-            const actual=(await db.query('SELECT original_text FROM submissions WHERE question_id=$1 ORDER BY created_at',[q.id])).rows.map(r=>r.original_text);assert.deepEqual(actual,expected);
-            const words=(await db.query('SELECT COALESCE(wa.target,s.canonical_key) text,count(*)::int count FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 GROUP BY 1 ORDER BY count DESC,text',[q.id])).rows;
-            const votes=words.reduce((n,w)=>n+w.count,0);acceptedVotes+=votes;
-            const pass=votes===expected.length&&(fixture.same?words.length===1:words.length===fixture.words.length);
-            console.log(JSON.stringify({event:'verified_production_case',case:fixture.name,pass,votes,words}));assert(pass);
-          }
-          const outageQuestion=questions.find(q=>q.title==='Проверка при недоступности модели');assert(outageQuestion);
-          const outage=(await db.query("SELECT status,error,count(*)::int n FROM semantic_queue WHERE question_id=$1 GROUP BY 1,2",[outageQuestion.id])).rows;
-          assert(outage.every(r=>r.status==='review'&&r.error==='synthetic_outage_verified'));
-          assert.equal((await db.query('SELECT count(*)::int n FROM submissions WHERE question_id=$1',[outageQuestion.id])).rows[0].n,2);
-          const dryRun=(await db.query("SELECT count(*)::int n FROM semantic_queue WHERE error='protected_event' AND error_detail='DRY_RUN_CLASSIFIED_NO_APPLICATION'")).rows[0].n;
-          const publicResponse=await fetch(process.env.APP_ORIGIN+'/api/public/events/'+fixtureEvent.slug+'/screen');assert.equal(publicResponse.status,200);const publicState=await publicResponse.json();assert.equal(publicState.audiences[0].answerCount,3);assert.equal(publicState.audiences[0].words.length,1);
-          console.log(JSON.stringify({event:'verified_production_complete',slug:fixtureEvent.slug,cases:cases.length,votes:acceptedVotes,outageAccepted:2,protectedDryRun:dryRun,screen:publicState.audiences[0].words,pass:true}));await db.end();
+          await db.end();
           JS
-          curl --fail --silent --show-error --max-time 15 https://imi-cloudpoll.ru/api/ready
-          docker logs --since 5m "$app" 2>&1 | grep -E 'semantic_retry|semantic_batch|semantic_validation' | tail -30 || true
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
