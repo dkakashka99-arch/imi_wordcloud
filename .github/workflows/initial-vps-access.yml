@@ -1,0 +1,35 @@
+name: Initial VPS SSH access
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/initial-vps-access.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Public host key for owner verification
+        run: |
+          mkdir -m 700 -p "$RUNNER_TEMP/vps-ssh"
+          ssh-keyscan -T 10 -t ed25519 212.109.196.228 > "$RUNNER_TEMP/vps-ssh/known_hosts"
+          ssh-keygen -lf "$RUNNER_TEMP/vps-ssh/known_hosts"
+          echo 'Confirm fingerprint through FirstVDS or a trusted SSH client before setting VPS_HOST_KEY_SHA256.'
+      - name: Host verification and read-only Ubuntu inspection
+        env:
+          EXPECTED: ${{ vars.VPS_HOST_KEY_SHA256 }}
+          SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+        run: |
+          if test -z "$EXPECTED" || test -z "$SSHPASS"; then
+            echo 'Waiting for VPS_HOST_KEY_SHA256 and VPS_BOOTSTRAP_PASSWORD. No authenticated connection attempted.'
+            exit 0
+          fi
+          actual=$(ssh-keygen -lf "$RUNNER_TEMP/vps-ssh/known_hosts" | awk '{print $2}')
+          test "$actual" = "$EXPECTED" || { echo 'Host key mismatch'; exit 1; }
+          sudo apt-get update -qq
+          sudo apt-get install -y sshpass
+          sshpass -e ssh -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" -o ConnectTimeout=15 root@212.109.196.228 'set -eu; cat /etc/os-release; uname -m; df -h /; free -m; command -v docker || true; ss -lnt'
+      - name: Cleanup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vps-ssh/known_hosts"
