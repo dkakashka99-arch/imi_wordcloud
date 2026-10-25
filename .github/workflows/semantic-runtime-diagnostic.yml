@@ -1,4 +1,4 @@
-name: Synthetic structured JSON diagnosis
+name: Semantic live quality diagnosis
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -8,12 +8,12 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: a1b898b6983fa1011842f0d158231e2830979e4d
+          ref: e1c435e91a52c2334c6164fba7e69ea35e35ac1c
       - name: Diagnose runtime without secrets or participant originals
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -31,30 +31,21 @@ jobs:
           compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
           app=$("${compose[@]}" ps -q app)
           docker exec "$app" node -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:Boolean(process.env.GIGACHAT_AUTH_KEY||process.env.GIGACHAT_AUTH_KEY_FILE)}))'
-          test "$RELEASE" = 174f8b9dc4dba5b43479e035231c6631161b54fe
-          "${compose[@]}" run --rm -T tools node --import tsx --input-type=module <<'JS'
-          import {Pool} from 'pg';import assert from 'node:assert/strict';
-          import {cases} from './scripts/check-semantic-live.ts';
-          import {GigaClient,aiConfig,transport} from './src/lib/ai/client.ts';
-          import {classify} from './src/lib/semantic/classifier.ts';
-          const db=new Pool({connectionString:process.env.DATABASE_URL,max:2});
-          const questions=(await db.query("SELECT DISTINCT q.id,q.title FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE e.slug LIKE 'semantic-acceptance-%' AND e.title='GigaChat synthetic acceptance' AND sq.error_detail='CONTENT_JSON'")).rows;
-          console.log(JSON.stringify({event:'synthetic_json_diagnosis',questions:questions.length}));
-          for(const q of questions){
-            const originals=(await db.query('SELECT original_text FROM submissions WHERE question_id=$1 ORDER BY created_at',[q.id])).rows.map(r=>r.original_text);
-            const fixture=cases.find(f=>JSON.stringify([f.words[0],...f.words])===JSON.stringify(originals));assert(fixture,'Not an owned synthetic fixture');
-            const sources=(await db.query("SELECT source FROM semantic_queue WHERE question_id=$1 AND error_detail='CONTENT_JSON'",[q.id])).rows.map(r=>r.source);
-            const candidates=(await db.query('SELECT COALESCE(wa.target,s.canonical_key) text,count(*) n FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 GROUP BY 1 ORDER BY n DESC,text',[q.id])).rows.map(r=>r.text);
-            const ai=new GigaClient(aiConfig(),async(...args)=>{
-              const r=await transport(...args);
-              if(args[0].endsWith('chat/completions')&&r.status===200){const choice=r.body?.choices?.[0];const content=choice?.message?.content;let valid=false;try{JSON.parse(content);valid=true;}catch{}
-                console.log(JSON.stringify({event:'synthetic_content_shape',case:fixture.name,valid,finish:choice?.finish_reason,length:typeof content==='string'?content.length:null,fenced:typeof content==='string'&&content.trim().startsWith('```'),bom:typeof content==='string'&&content.charCodeAt(0)===65279,...(!valid?{syntheticContent:content}: {})}));}
-              return r;
-            });
-            for(let round=0;round<3;round++)try{const result=await classify(ai,await ai.model(),q.title,sources,candidates);console.log(JSON.stringify({event:'synthetic_json_result',case:fixture.name,round,matches:result.matches.length,rejected:result.rejected}));}catch(e){console.log(JSON.stringify({event:'synthetic_json_failure',case:fixture.name,round,code:e.code||e.name,detail:e.detail}));}
-          }
+          docker logs --since 6h "$app" 2>&1 | rg 'semantic_|Semantic worker' | tail -30 || true
+          "${compose[@]}" run --rm -T tools node --input-type=module <<'JS'
+          import {Pool} from 'pg';
+          const db=new Pool({connectionString:process.env.DATABASE_URL});
+          console.log(JSON.stringify((await db.query("SELECT e.slug='mir-27-oct' protected_event,e.rehearsal,sq.status,sq.error,count(*)::int n FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id GROUP BY 1,2,3,4")).rows));
           await db.end();
           JS
+          REMOTE
+          scp -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" src/lib/semantic/classifier.ts src/lib/ai/client.ts scripts/check-semantic-live.ts deploy@212.109.196.228:/tmp/
+          ssh -T -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -s' <<'REMOTE'
+          set -eu
+          root=/opt/imi-wordcloud
+          export RELEASE=$(cat "$root/shared/current-release")
+          cd "$root/releases/$RELEASE"
+          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /tmp/classifier.ts:/app/src/lib/semantic/classifier.ts:ro -v /tmp/client.ts:/app/src/lib/ai/client.ts:ro -v /tmp/check-semantic-live.ts:/app/scripts/check-semantic-live.ts:ro tools sh -c 'for round in 1 2 3; do node --import tsx scripts/check-semantic-live.ts || exit 1; done'
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
