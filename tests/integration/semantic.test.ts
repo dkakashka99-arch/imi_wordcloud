@@ -212,3 +212,43 @@ it('commits independently verified valid pairs despite an invalid mapping and is
       .rows[0].n,
   ).toBe(3);
 });
+it('reconsiders an unmatched answer when a new candidate arrives, with a bounded retry budget', async () => {
+  const f = await fixture();
+  await f.send('навигацич');
+  const noMatch = {
+    model: async () => 'fixture',
+    generate: async () => ({ model: 'fixture', usage: null, result: { matches: [] } }),
+  };
+  await semanticTick(noMatch);
+  expect(
+    (await database().query('SELECT status,error FROM semantic_queue WHERE question_id=$1', [f.q]))
+      .rows[0],
+  ).toEqual({ status: 'review', error: 'no_equivalent' });
+  await f.send('навигацич');
+  expect(
+    (await database().query('SELECT status FROM semantic_queue WHERE question_id=$1', [f.q]))
+      .rows[0].status,
+  ).toBe('review');
+  await f.send('навигация');
+  expect(
+    (
+      await database().query(
+        'SELECT status FROM semantic_queue WHERE question_id=$1 AND source=$2',
+        [f.q, 'навигацич'],
+      )
+    ).rows[0].status,
+  ).toBe('pending');
+  await database().query(
+    "UPDATE semantic_queue SET attempts=3,status='review',error='no_equivalent' WHERE question_id=$1",
+    [f.q],
+  );
+  await f.send('другое слово');
+  expect(
+    (
+      await database().query(
+        'SELECT status FROM semantic_queue WHERE question_id=$1 AND source=$2',
+        [f.q, 'навигацич'],
+      )
+    ).rows[0].status,
+  ).toBe('review');
+});

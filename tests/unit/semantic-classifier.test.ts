@@ -58,3 +58,55 @@ it('requires independent confirmation and prevents the verifier adding unpropose
   };
   expect((await classify(ai, 'test', 'question', ['a', 'b'], ['c', 'd'])).matches).toEqual([]);
 });
+it('recovers identity-only model output with a focused pass and independently verifies it', async () => {
+  const contract = semanticContract(['навигация', 'навигацич'], ['навигация', 'навигацич']);
+  let calls = 0;
+  const ai = {
+    model: async () => 'fixture',
+    generate: async (_model: string, _prompt: string, input: unknown) => {
+      calls++;
+      if (calls === 1)
+        return {
+          model: 'fixture',
+          usage: null,
+          result: {
+            matches: contract.sources.map((s) => ({
+              source: s.id,
+              target: s.id,
+              relation: 'synonym',
+            })),
+          },
+        };
+      const data = input as { proposals?: { source: string; target: string; relation: string }[] };
+      return {
+        model: 'fixture',
+        usage: null,
+        result: {
+          matches: data.proposals?.map(({ source, target, relation }) => ({
+            source,
+            target,
+            relation,
+          })) || [
+            {
+              source: contract.sources[1].id,
+              target: contract.candidates[0].id,
+              relation: 'spelling',
+            },
+          ],
+        },
+      };
+    },
+  };
+  expect(
+    (
+      await classify(
+        ai,
+        'fixture',
+        'Что улучшить?',
+        ['навигация', 'навигацич'],
+        ['навигация', 'навигацич'],
+      )
+    ).matches,
+  ).toEqual([{ source: 'навигацич', target: 'навигация', relation: 'spelling' }]);
+  expect(calls).toBe(3);
+});

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { cases } from './check-semantic-live';
+import { classify } from '../src/lib/semantic/classifier';
+import { gigaClient } from '../src/lib/ai/client';
+import { sensitive } from '../src/lib/ai/validation';
 if (process.env.PRODUCTION_ACCEPTANCE !== 'true')
   throw new Error('Synthetic acceptance opt-in required');
 const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
@@ -107,6 +110,47 @@ try {
         words: state.words,
         votes: state.answerCount,
       }),
+    );
+  }
+  // Diagnose the protected historic queue without changing real-event aliases/votes.
+  const protectedQuestions = (
+    await db.query(
+      "SELECT DISTINCT q.id,q.title FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct' AND sq.error='protected_event'",
+    )
+  ).rows;
+  const ai = gigaClient(),
+    model = await ai.model();
+  for (const q of protectedQuestions) {
+    const sources = (
+      await db.query(
+        "SELECT source FROM semantic_queue WHERE question_id=$1 AND error='protected_event'",
+        [q.id],
+      )
+    ).rows
+      .map((r) => r.source)
+      .filter((s) => !sensitive(s));
+    const candidates = (
+      await db.query(
+        "SELECT COALESCE(wa.target,s.canonical_key) text,count(*) n FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 AND s.approved AND s.original_text !~ '^[А-ЯЁ][а-яё]+[[:space:]]+[А-ЯЁ][а-яё]+' GROUP BY 1 ORDER BY n DESC,text LIMIT 150",
+        [q.id],
+      )
+    ).rows
+      .map((r) => r.text)
+      .filter((s) => !sensitive(s));
+    const result = await classify(ai, model, q.title, sources, candidates);
+    console.log(
+      JSON.stringify({
+        event: 'protected_recovery_dry_run',
+        count: sources.length,
+        proposed: result.matches.length,
+        unmatched: sources.length - result.matches.length,
+        applied: 0,
+        model,
+      }),
+    );
+    await db.query(
+      "UPDATE semantic_queue SET error_detail='DRY_RUN_CLASSIFIED_NO_APPLICATION' WHERE question_id=$1 AND error='protected_event'",
+      [q.id],
     );
   }
   assert.equal(await protectedState(), before, 'Protected real event data changed');

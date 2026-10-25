@@ -181,6 +181,14 @@ export async function submit(
             ctx.rehearsal,
           ],
         );
+        // A previously unmatched word may become classifiable when a genuinely new
+        // candidate arrives. Retry at most three times; repeated votes do not loop.
+        await client.query(
+          `UPDATE semantic_queue SET status='pending',available_at=now(),error=NULL,error_detail=NULL
+           WHERE question_id=$1 AND status='review' AND error='no_equivalent' AND attempts<3
+           AND (SELECT count(*) FROM submissions WHERE question_id=$1 AND canonical_key=$2)=1`,
+          [q.id, key],
+        );
         await client.query('UPDATE questions SET revision=revision+1 WHERE id=$1', [q.id]);
       }
     }
