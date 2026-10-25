@@ -1,0 +1,71 @@
+name: Improve production HTTPS transport
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/https-transport.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Inspect server and enable privacy preserving timing diagnostics
+        env:
+          VPS_PASSWORD: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+        run: |
+          umask 077
+          cat > "$RUNNER_TEMP/ssh/askpass" <<'EOF'
+          #!/bin/sh
+          printf '%s\n' "$VPS_PASSWORD"
+          EOF
+          chmod 700 "$RUNNER_TEMP/ssh/askpass"
+          export SSH_ASKPASS="$RUNNER_TEMP/ssh/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=imi:0
+          setsid -w ssh -T -o PubkeyAuthentication=no -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" root@212.109.196.228 'bash -se' <<'REMOTE'
+          set -Eeuo pipefail
+          conf=/etc/nginx/sites-available/imi-wordcloud
+          backup=/root/imi-nginx-before-transport-tuning.conf
+          test -s "$conf"
+          test -e "$backup" || cp -p "$conf" "$backup"
+          nginx -V 2>&1 | python3 -c 'import sys; s=sys.stdin.read(); assert "--with-http_v2_module" in s; print("HTTP2_MODULE_AVAILABLE")'
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/etc/nginx/sites-available/imi-wordcloud')
+          s=p.read_text()
+          if 'listen 443 ssl;' in s: s=s.replace('listen 443 ssl;','listen 443 ssl http2;')
+          assert 'listen 443 ssl http2;' in s
+          if 'ssl_buffer_size ' not in s: s=s.replace('ssl_protocols TLSv1.2 TLSv1.3;','ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_buffer_size 4k;')
+          p.write_text(s)
+          PY
+          if ! nginx -t; then cp -p "$backup" "$conf"; nginx -t; exit 1; fi
+          systemctl reload nginx
+          if ! curl --fail --silent --show-error --http2 --resolve imi-cloudpoll.ru:443:127.0.0.1 --max-time 10 -o /dev/null -w 'LOCAL_PROTOCOL=%{http_version} STATUS=%{http_code}\n' https://imi-cloudpoll.ru/api/ready; then
+            cp -p "$backup" "$conf"
+            nginx -t
+            systemctl reload nginx
+            exit 1
+          fi
+          echo TRANSPORT_TUNING_APPLIED_WITHOUT_APP_RESTART
+          REMOTE
+      - name: Measure public QR navigation and health sequence
+        run: |
+          for path in / /e/mir-27-oct/screen /api/public/events/mir-27-oct/student/qr /e/mir-27-oct/student /api/public/events/mir-27-oct/student / /e/mir-27-oct/employer /api/ready; do
+            echo "ROUTE=$path"
+            curl -4 -sS --connect-timeout 5 --max-time 20 -o /dev/null -w 'status=%{http_code} dns=%{time_namelookup} connect=%{time_connect} tls=%{time_appconnect} first_byte=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' "https://imi-cloudpoll.ru$path"
+          done
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts" "$RUNNER_TEMP/ssh/askpass"
+
+# Inspect recurring ten-minute outages; do not restart services.
