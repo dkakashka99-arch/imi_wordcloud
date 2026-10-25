@@ -20,7 +20,9 @@ jobs:
     # Default is GitHub-hosted SSH. Optional dedicated runner must never run PR jobs.
     runs-on: ${{ vars.DEPLOY_RUNNER || 'ubuntu-24.04' }}
     environment: production
-    timeout-minutes: 30
+    timeout-minutes: 60
+    env:
+      BUILD_ON_VPS: ${{ vars.DEPLOY_BUILD_ON_VPS != 'false' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,11 +49,16 @@ jobs:
         env:
           RELEASE: ${{ github.event.workflow_run.head_sha }}
         run: |
-          docker build --target runtime -t imi-wordcloud:$RELEASE .
-          docker build --target tools -t imi-wordcloud-tools:$RELEASE .
-          docker save imi-wordcloud:$RELEASE imi-wordcloud-tools:$RELEASE | gzip > images.tar.gz
-          tar -czf release.tar.gz compose.production.yaml ops
-          sha256sum images.tar.gz release.tar.gz > SHA256SUMS
+          if test "$BUILD_ON_VPS" = true; then
+            git archive --format=tar "$RELEASE" | gzip > source.tar.gz
+            sha256sum source.tar.gz > SHA256SUMS
+          else
+            docker build --target runtime -t imi-wordcloud:$RELEASE .
+            docker build --target tools -t imi-wordcloud-tools:$RELEASE .
+            docker save imi-wordcloud:$RELEASE imi-wordcloud-tools:$RELEASE | gzip > images.tar.gz
+            tar -czf release.tar.gz compose.production.yaml ops
+            sha256sum images.tar.gz release.tar.gz > SHA256SUMS
+          fi
       - name: Configure pinned SSH
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -71,7 +78,7 @@ jobs:
         run: |
           test "$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/main --jq .object.sha)" = "$RELEASE"
           [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]]
-          SSH_OPTS=(-i "$RUNNER_TEMP/imi-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/imi-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20)
+          SSH_OPTS=(-i "$RUNNER_TEMP/imi-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/imi-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=6)
           available_kb=$(ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "df -Pk /opt/imi-wordcloud" | awk 'NR==2 {print $4}')
           test "$available_kb" -ge 8388608
           ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "mkdir -p /opt/imi-wordcloud/incoming/$RELEASE /opt/imi-wordcloud/releases/$RELEASE"
@@ -80,8 +87,13 @@ jobs:
             printf '%s\n' "$BACKUP_URL" > "$RUNNER_TEMP/imi-ssh/backup-proof"
             scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" "$RUNNER_TEMP/imi-ssh/backup-proof" "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/shared/offsite-backup-$RELEASE"
           fi
-          scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" images.tar.gz release.tar.gz SHA256SUMS "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/incoming/$RELEASE/"
-          ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; gunzip -c images.tar.gz | docker load; tar -xzf release.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; bash /opt/imi-wordcloud/releases/$RELEASE/ops/deploy.sh $RELEASE; rm images.tar.gz release.tar.gz SHA256SUMS"
+          if test "$BUILD_ON_VPS" = true; then
+            scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" source.tar.gz SHA256SUMS "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/incoming/$RELEASE/"
+            ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; tar -xzf source.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; cd /opt/imi-wordcloud/releases/$RELEASE; docker build --target runtime -t imi-wordcloud:$RELEASE .; docker build --target tools -t imi-wordcloud-tools:$RELEASE .; bash ops/deploy.sh $RELEASE; rm /opt/imi-wordcloud/incoming/$RELEASE/source.tar.gz /opt/imi-wordcloud/incoming/$RELEASE/SHA256SUMS"
+          else
+            scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" images.tar.gz release.tar.gz SHA256SUMS "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/incoming/$RELEASE/"
+            ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; gunzip -c images.tar.gz | docker load; tar -xzf release.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; bash /opt/imi-wordcloud/releases/$RELEASE/ops/deploy.sh $RELEASE; rm images.tar.gz release.tar.gz SHA256SUMS"
+          fi
       - name: Public HTTPS smoke
         run: |
           curl --fail --show-error --silent --retry 4 --retry-delay 5 --max-time 15 https://imi-cloudpoll.ru/api/ready
