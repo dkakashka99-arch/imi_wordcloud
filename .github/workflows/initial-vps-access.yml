@@ -41,8 +41,15 @@ jobs:
           SSH_OPTS=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" -o ConnectTimeout=15)
           sshpass -e scp "${SSH_OPTS[@]}" ops/bootstrap.sh root@212.109.196.228:/root/imi-bootstrap.sh
           sshpass -e ssh "${SSH_OPTS[@]}" root@212.109.196.228 'set -eu; umask 077; test -f /root/imi-bootstrap-admin || ssh-keygen -q -t ed25519 -N "" -f /root/imi-bootstrap-admin -C imi-initial-admin; test -f /root/imi-bootstrap-ci || ssh-keygen -q -t ed25519 -N "" -f /root/imi-bootstrap-ci -C imi-ci-deploy; bash /root/imi-bootstrap.sh /root/imi-bootstrap-admin.pub /root/imi-bootstrap-ci.pub; docker version --format "{{.Server.Version}}"; docker compose version; systemctl is-active docker nginx ssh; id deploy; ufw status'
+      - name: Verify separate deploy account with temporary runner key
+        env:
+          SSHPASS: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+        run: |
+          umask 077
+          sshpass -e ssh -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" root@212.109.196.228 'cat /root/imi-bootstrap-ci' > "$RUNNER_TEMP/vps-ssh/deploy-key"
+          ssh -i "$RUNNER_TEMP/vps-ssh/deploy-key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/vps-ssh/known_hosts" deploy@212.109.196.228 'id; docker info --format "{{.ServerVersion}}"; test -d /opt/imi-wordcloud/shared; echo DEPLOY_KEY_LOGIN_OK'
       - name: Cleanup
         if: always()
-        run: rm -f "$RUNNER_TEMP/vps-ssh/known_hosts"
+        run: rm -f "$RUNNER_TEMP/vps-ssh/known_hosts" "$RUNNER_TEMP/vps-ssh/deploy-key"
 
 # Bootstrap reads all sshd output to avoid SIGPIPE under pipefail.
