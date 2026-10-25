@@ -159,3 +159,29 @@ it('keeps other verified pairs when one focused source returns an empty generati
   expect(result.matches).toEqual([{ source: 'вариант', target: 'канон', relation: 'synonym' }]);
   expect(result.affected).toContain('отдельно');
 });
+it('recovers an omitted source without discarding an already correct proposal', async () => {
+  const words = ['канон', 'вариант', 'другой вариант'];
+  const c = semanticContract(words, words);
+  let call = 0;
+  const ai = {
+    model: async () => 'fixture',
+    generate: async (_m: string, _p: string, input: unknown) => {
+      call++;
+      if (call === 3) return confirmed(input);
+      const index = call === 1 ? 1 : 2;
+      return {
+        model: 'fixture',
+        usage: null,
+        result: {
+          matches: [
+            { source: c.sources[index].id, target: c.candidates[0].id, relation: 'synonym' },
+          ],
+        },
+      };
+    },
+  };
+  const result = await classify(ai, 'fixture', 'Вопрос', words, words);
+  expect(result.matches).toHaveLength(2);
+  expect(result.matches.every((m) => m.target === 'канон')).toBe(true);
+  expect(call).toBe(3);
+});
