@@ -92,12 +92,23 @@ it('keeps POST independent of model quota errors, retries retained queue and app
   await database().query('UPDATE semantic_queue SET available_at=now() WHERE question_id=$1', [
     f.q,
   ]);
-  const result = {
-    matches: [{ source: 'платят хорошо', target: 'зарплата', relation: 'synonym' }],
-  };
   await semanticTick({
     model: async () => 'fixture-model',
-    generate: async () => ({ result, usage: null, model: 'fixture-model' }),
+    generate: async (_model, _prompt, input) => {
+      const data = input as {
+        sources?: { id: string; text: string }[];
+        candidates?: { id: string; text: string }[];
+        proposals?: unknown[];
+      };
+      const matches = data.proposals || [
+        {
+          source: data.sources!.find((s) => s.text === 'платят хорошо')!.id,
+          target: data.candidates!.find((s) => s.text === 'зарплата')!.id,
+          relation: 'synonym',
+        },
+      ];
+      return { result: { matches }, usage: null, model: 'fixture-model' };
+    },
   });
   const state = (await screenState(f.slug)).audiences[0];
   expect(state.answerCount).toBe(4);
