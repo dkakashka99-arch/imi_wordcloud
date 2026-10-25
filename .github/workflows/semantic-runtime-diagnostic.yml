@@ -58,23 +58,24 @@ jobs:
           let fixtureEvent;let questions=[];
           for(let attempt=0;attempt<180;attempt++){
             fixtureEvent=(await db.query("SELECT id,slug FROM events WHERE slug LIKE 'semantic-acceptance-%' AND title='GigaChat synthetic acceptance' AND rehearsal AND created_at>$1 ORDER BY created_at DESC LIMIT 1",[before.cutoff])).rows[0];
-            if(fixtureEvent){questions=(await db.query('SELECT id,title,status FROM questions WHERE event_id=$1 ORDER BY created_at,id',[fixtureEvent.id])).rows;if(questions.length===cases.length+1&&questions.every(q=>q.status==='paused'))break;}
+            if(fixtureEvent){questions=(await db.query('SELECT q.id,q.title,q.status,(SELECT json_agg(s.original_text ORDER BY s.created_at) FROM submissions s WHERE s.question_id=q.id) originals FROM questions q WHERE q.event_id=$1',[fixtureEvent.id])).rows;if(questions.length===cases.length+1&&questions.every(q=>q.status==='paused'))break;}
             await new Promise(r=>setTimeout(r,2000));
           }
           assert(fixtureEvent,'Synthetic production event missing');assert.equal(questions.length,cases.length+1);assert(questions.every(q=>q.status==='paused'),'Production semantic acceptance has not finished successfully');
           let acceptedVotes=0;
           for(let i=0;i<cases.length;i++){
-            const fixture=cases[i],q=questions[i];assert.equal(q.title,fixture.question);
-            const expected=[fixture.words[0],...fixture.words];
+            const fixture=cases[i];const expected=[fixture.words[0],...fixture.words];
+            const matching=questions.filter(q=>q.title===fixture.question&&JSON.stringify(q.originals)===JSON.stringify(expected));assert.equal(matching.length,1);const q=matching[0];
             const actual=(await db.query('SELECT original_text FROM submissions WHERE question_id=$1 ORDER BY created_at',[q.id])).rows.map(r=>r.original_text);assert.deepEqual(actual,expected);
             const words=(await db.query('SELECT COALESCE(wa.target,s.canonical_key) text,count(*)::int count FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 GROUP BY 1 ORDER BY count DESC,text',[q.id])).rows;
             const votes=words.reduce((n,w)=>n+w.count,0);acceptedVotes+=votes;
             const pass=votes===expected.length&&(fixture.same?words.length===1:words.length===fixture.words.length);
             console.log(JSON.stringify({event:'verified_production_case',case:fixture.name,pass,votes,words}));assert(pass);
           }
-          const outage=(await db.query("SELECT status,error,count(*)::int n FROM semantic_queue WHERE question_id=$1 GROUP BY 1,2",[questions.at(-1).id])).rows;
+          const outageQuestion=questions.find(q=>q.title==='Проверка при недоступности модели');assert(outageQuestion);
+          const outage=(await db.query("SELECT status,error,count(*)::int n FROM semantic_queue WHERE question_id=$1 GROUP BY 1,2",[outageQuestion.id])).rows;
           assert(outage.every(r=>r.status==='review'&&r.error==='synthetic_outage_verified'));
-          assert.equal((await db.query('SELECT count(*)::int n FROM submissions WHERE question_id=$1',[questions.at(-1).id])).rows[0].n,2);
+          assert.equal((await db.query('SELECT count(*)::int n FROM submissions WHERE question_id=$1',[outageQuestion.id])).rows[0].n,2);
           const dryRun=(await db.query("SELECT count(*)::int n FROM semantic_queue WHERE error='protected_event' AND error_detail='DRY_RUN_CLASSIFIED_NO_APPLICATION'")).rows[0].n;
           const publicResponse=await fetch(process.env.APP_ORIGIN+'/api/public/events/'+fixtureEvent.slug+'/screen');assert.equal(publicResponse.status,200);const publicState=await publicResponse.json();assert.equal(publicState.audiences[0].answerCount,3);assert.equal(publicState.audiences[0].words.length,1);
           console.log(JSON.stringify({event:'verified_production_complete',slug:fixtureEvent.slug,cases:cases.length,votes:acceptedVotes,outageAccepted:2,protectedDryRun:dryRun,screen:publicState.audiences[0].words,pass:true}));await db.end();
