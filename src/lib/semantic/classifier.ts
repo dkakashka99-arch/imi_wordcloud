@@ -160,6 +160,7 @@ export async function classify(
     });
     first = {
       ...decoded,
+      affected: [...new Set([...first.affected, ...decoded.affected, ...focusedAffected])],
       rejected: { ...first.rejected, ...decoded.rejected, ...focusedErrors, FOCUSED_PASS: 1 },
     };
   }
