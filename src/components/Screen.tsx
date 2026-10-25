@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import type { ScreenState } from '@/lib/contracts';
 import { WordCloud } from './WordCloud';
+import { requestJson } from '@/lib/client-request';
 export function Screen({ slug, origin }: { slug: string; origin: string }) {
   const [data, setData] = useState<ScreenState | null>(null),
     [selected, setSelected] = useState('student'),
@@ -13,13 +14,14 @@ export function Screen({ slug, origin }: { slug: string; origin: string }) {
     let live = true;
     let timer: ReturnType<typeof setTimeout>;
     let failures = 0;
+    const controller = new AbortController();
     async function refresh() {
       try {
-        const r = await fetch(`/api/public/events/${encodeURIComponent(slug)}/screen`, {
-          cache: 'no-store',
-        });
+        const { response: r, data: next } = await requestJson<ScreenState>(
+          `/api/public/events/${encodeURIComponent(slug)}/screen`,
+          { cache: 'no-store', signal: controller.signal },
+        );
         if (!r.ok) throw new Error('offline');
-        const next: ScreenState = await r.json();
         if (live) {
           setData((previous) =>
             previous?.revision === next.revision && previous.title === next.title ? previous : next,
@@ -38,6 +40,7 @@ export function Screen({ slug, origin }: { slug: string; origin: string }) {
     return () => {
       live = false;
       clearTimeout(timer);
+      controller.abort();
     };
   }, [slug]);
   const group = data?.audiences.find((a) => a.key === selected) || data?.audiences[0];
