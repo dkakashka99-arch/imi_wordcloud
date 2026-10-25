@@ -55,6 +55,7 @@ export type AdminQuestion = {
   answerCount: number;
 };
 export type AdminEvent = {
+  publicAudienceKey?: string | null;
   id: string;
   slug: string;
   title: string;

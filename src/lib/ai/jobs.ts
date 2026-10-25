@@ -329,7 +329,10 @@ export async function reviewAnalysis(
         JSON.stringify({ [cmd.index]: cmd.accept ? 'accepted' : 'rejected' }),
       ]);
       if (changed)
-        await c.query('UPDATE questions SET revision=revision+1 WHERE id=$1', [questionId]);
+        await c.query(
+          'UPDATE questions SET revision=revision+1,semantic_revision=semantic_revision+1 WHERE id=$1',
+          [questionId],
+        );
     }
     if (changed)
       await c.query('UPDATE ai_jobs SET review_revision=$2 WHERE id=$1', [job.id, q.revision + 1]);

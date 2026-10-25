@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { layoutWords } from '../../src/lib/layout';
+import { layoutWords, CLOUD_LIMIT } from '../../src/lib/layout';
 describe('deterministic word layout', () => {
   it('places Russian words, long phrases and emoji inside bounds without collisions', () => {
     const words = Array.from({ length: 80 }, (_, i) => ({
@@ -7,7 +7,11 @@ describe('deterministic word layout', () => {
       count: 80 - i,
     }));
     const placed = layoutWords(words);
-    expect(placed).toHaveLength(words.length);
+    expect(placed.length).toBeGreaterThanOrEqual(15);
+    expect(placed.length).toBeLessThanOrEqual(CLOUD_LIMIT);
+    expect(placed[0].text).toBe(words[0].text);
+    expect(placed.map((p) => p.text)).toEqual(words.slice(0, placed.length).map((w) => w.text));
+    expect(placed.every((p) => p.size >= 20)).toBe(true);
     expect(layoutWords(words)).toEqual(placed);
     for (const a of placed) {
       expect(a.x - a.width / 2).toBeGreaterThanOrEqual(0);

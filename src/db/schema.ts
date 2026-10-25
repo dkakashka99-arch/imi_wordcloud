@@ -20,6 +20,7 @@ export const events = pgTable('events', {
   id: uuid().defaultRandom().primaryKey(),
   slug: text().notNull().unique(),
   title: text().notNull(),
+  publicAudienceKey: text('public_audience_key'),
   archived: boolean().default(false).notNull(),
   rehearsal: boolean().default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -50,6 +51,7 @@ export const questions = pgTable(
     premoderation: boolean().default(false).notNull(),
     aiSummary: jsonb('ai_summary'),
     aiSummaryRevision: bigint('ai_summary_revision', { mode: 'number' }),
+    semanticRevision: bigint('semantic_revision', { mode: 'number' }).default(0).notNull(),
     revision: bigint({ mode: 'number' }).default(0).notNull(),
     position: integer().default(0).notNull(),
   },
@@ -223,3 +225,35 @@ export const aiJobs = pgTable(
     check('ai_job_kind', sql`${t.kind} in ('aliases','moderation','summary')`),
   ],
 );
+
+export const semanticQueue = pgTable(
+  'semantic_queue',
+  {
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => questions.id, { onDelete: 'cascade' }),
+    source: text().notNull(),
+    status: text().default('pending').notNull(),
+    attempts: integer().default(0).notNull(),
+    availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+    error: text(),
+  },
+  (t) => [
+    unique().on(t.questionId, t.source),
+    index('semantic_queue_pending')
+      .on(t.availableAt)
+      .where(sql`${t.status}='pending'`),
+    check('semantic_queue_status', sql`${t.status} in ('pending','review','completed')`),
+  ],
+);
+export const semanticHistory = pgTable('semantic_history', {
+  id: uuid().defaultRandom().primaryKey(),
+  questionId: uuid('question_id')
+    .notNull()
+    .references(() => questions.id, { onDelete: 'cascade' }),
+  source: text().notNull(),
+  target: text().notNull(),
+  method: text().notNull(),
+  version: text().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
