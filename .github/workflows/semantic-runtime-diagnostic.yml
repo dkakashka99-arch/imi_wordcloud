@@ -1,4 +1,4 @@
-name: Semantic recovery audit snapshot
+name: Semantic recovery production audit
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -8,7 +8,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,32 +25,38 @@ jobs:
           ssh -T -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -s' <<'REMOTE'
           set -eu
           root=/opt/imi-wordcloud
+          expected=174f8b9dc4dba5b43479e035231c6631161b54fe
+          for attempt in $(seq 1 80); do
+            test "$(cat "$root/shared/current-release")" != "$expected" || break
+            sleep 10
+          done
           export RELEASE=$(cat "$root/shared/current-release")
-          echo "release=$RELEASE"
+          test "$RELEASE" = "$expected"
           cd "$root/releases/$RELEASE"
           compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
           app=$("${compose[@]}" ps -q app)
-          docker exec "$app" node -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:Boolean(process.env.GIGACHAT_AUTH_KEY||process.env.GIGACHAT_AUTH_KEY_FILE)}))'
-          if test ! -f "$root/shared/semantic-recovery-pr19-cohort.json"; then
-            umask 077
-            "${compose[@]}" run --rm -T tools node --input-type=module <<'JS' > "$root/shared/semantic-recovery-pr19-cohort.tmp"
-          import {Pool} from 'pg';
-          const db=new Pool({connectionString:process.env.DATABASE_URL});
-          await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-          const cutoff=(await db.query('SELECT now() cutoff')).rows[0].cutoff;
-          const cohort=(await db.query("SELECT md5(sq.question_id::text||':'||sq.source) key,sq.status,sq.error,sq.attempts,e.slug='mir-27-oct' protected FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE sq.status='pending' AND sq.error='invalid_response'")).rows;
-          const originals=(await db.query("SELECT count(*)::int n,md5(coalesce(string_agg(id::text||original_text||canonical_key,'|' ORDER BY id),'')) checksum FROM submissions WHERE created_at<=$1",[cutoff])).rows[0];
-          const protectedAliases=(await db.query("SELECT md5(coalesce(string_agg(wa.question_id::text||wa.source||wa.target,'|' ORDER BY wa.question_id,wa.source),'')) checksum FROM word_aliases wa JOIN questions q ON q.id=wa.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct'")).rows[0].checksum;
-          await db.query('COMMIT');await db.end();
-          console.log(JSON.stringify({cutoff,cohort,originals,protectedAliases}));
+          docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
+          "${compose[@]}" run --rm -T -v /opt/imi-wordcloud/shared/semantic-recovery-pr19-cohort.json:/run/cohort.json:ro tools node --input-type=module <<'JS'
+          import {Pool} from 'pg';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {createHash} from 'node:crypto';
+          const before=JSON.parse(readFileSync('/run/cohort.json','utf8'));
+          const db=new Pool({connectionString:process.env.DATABASE_URL,max:2});
+          const keys=before.cohort.map(r=>r.key);let rows=[];
+          for(let attempt=0;attempt<90;attempt++){
+            rows=(await db.query("SELECT md5(sq.question_id::text||':'||sq.source) key,sq.status,sq.error,sq.error_detail,sq.attempts FROM semantic_queue sq WHERE md5(sq.question_id::text||':'||sq.source)=ANY($1::text[])",[keys])).rows;
+            if(rows.length===keys.length&&!rows.some(r=>r.status==='pending'))break;
+            await new Promise(r=>setTimeout(r,2000));
+          }
+          const originals=(await db.query("SELECT count(*)::int n,md5(coalesce(string_agg(id::text||original_text||canonical_key,'|' ORDER BY id),'')) checksum FROM submissions WHERE created_at<=$1",[before.cutoff])).rows[0];
+          const aliases=(await db.query("SELECT md5(coalesce(string_agg(wa.question_id::text||wa.source||wa.target,'|' ORDER BY wa.question_id,wa.source),'')) checksum FROM word_aliases wa JOIN questions q ON q.id=wa.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct'")).rows[0].checksum;
+          const groups={};for(const r of rows){const protectedEvent=before.cohort.find(c=>c.key===r.key).protected;const key=JSON.stringify({protected:protectedEvent,status:r.status,error:r.error,error_detail:r.error_detail});groups[key]=(groups[key]||0)+1;}
+          const migrationHashes=(await db.query('SELECT hash FROM drizzle.__drizzle_migrations')).rows.map(r=>r.hash);
+          const migrations=['drizzle/0005_retry_semantic_decoder.sql','drizzle/0006_semantic_diagnostics.sql'].map(path=>({path,applied:migrationHashes.includes(createHash('sha256').update(readFileSync(path)).digest('hex'))}));
+          console.log(JSON.stringify({event:'recovery_after',cohort:keys.length,rows:rows.length,pending:rows.filter(r=>r.status==='pending').length,groups:Object.entries(groups).map(([key,count])=>({...JSON.parse(key),count})),originalVotes:originals.n,originalsUnchanged:JSON.stringify(originals)===JSON.stringify(before.originals),protectedAliasesUnchanged:aliases===before.protectedAliases,migrations}));
+          console.log(JSON.stringify({event:'queue_after',rows:(await db.query('SELECT status,error,error_detail,count(*)::int n,max(attempts) max_attempts FROM semantic_queue GROUP BY 1,2,3')).rows}));
+          assert.deepEqual(originals,before.originals);assert.equal(aliases,before.protectedAliases);assert.equal(rows.length,keys.length);assert.equal(rows.some(r=>r.status==='pending'),false);assert(migrations.every(m=>m.applied));await db.end();
           JS
-            mv "$root/shared/semantic-recovery-pr19-cohort.tmp" "$root/shared/semantic-recovery-pr19-cohort.json"
-          fi
-          python3 - <<'PYCODE'
-          import json
-          p=json.load(open('/opt/imi-wordcloud/shared/semantic-recovery-pr19-cohort.json'))
-          print(json.dumps({'event':'recovery_before','count':len(p['cohort']),'protected':sum(r['protected'] for r in p['cohort']),'originalVotes':p['originals']['n']}))
-          PYCODE
+          curl --fail --silent --show-error --max-time 15 https://imi-cloudpoll.ru/api/ready
+          docker logs --since 5m "$app" 2>&1 | grep -E 'semantic_retry|semantic_batch|semantic_validation' | tail -30 || true
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
