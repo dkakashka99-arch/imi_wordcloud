@@ -1,0 +1,71 @@
+name: First production rollout
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/first-rollout.yml]
+permissions:
+  contents: read
+concurrency:
+  group: initial-production-rollout
+  cancel-in-progress: false
+jobs:
+  rollout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Require production checks for exact main release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(git rev-parse HEAD)
+          echo "RELEASE=$release" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 90); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$release&event=push&per_page=100")
+            if printf '%s' "$runs" | jq -e '[.workflow_runs[] | select((.name=="CI" or .name=="Infrastructure") and .conclusion=="success")] | unique_by(.name) | length==2' >/dev/null; then exit 0; fi
+            sleep 10
+          done
+          exit 1
+      - name: Build and package first release off VPS
+        run: |
+          docker build --target runtime -t imi-wordcloud:$RELEASE .
+          docker build --target tools -t imi-wordcloud-tools:$RELEASE .
+          docker pull postgres:17-bookworm
+          docker save imi-wordcloud:$RELEASE imi-wordcloud-tools:$RELEASE postgres:17-bookworm | gzip > images.tar.gz
+          tar -czf release.tar.gz compose.production.yaml ops
+          sha256sum images.tar.gz release.tar.gz > SHA256SUMS
+      - name: Deploy exact main release through verified SSH
+        run: |
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 "mkdir -p /opt/imi-wordcloud/incoming/$RELEASE /opt/imi-wordcloud/releases/$RELEASE"
+          scp "${SSH_OPTS[@]}" images.tar.gz release.tar.gz SHA256SUMS "deploy@212.109.196.228:/opt/imi-wordcloud/incoming/$RELEASE/"
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; gunzip -c images.tar.gz | docker load; tar -xzf release.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; bash /opt/imi-wordcloud/releases/$RELEASE/ops/deploy.sh $RELEASE; rm images.tar.gz release.tar.gz SHA256SUMS"
+      - name: Verify live GigaChat and prepare paused event
+        run: |
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'set -eu; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T tools node --import tsx scripts/check-gigachat.ts; docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T tools npm run db:seed -- ops/event-27-oct.json; if ! test -f /opt/imi-wordcloud/shared/organizer-password; then umask 077; openssl rand -base64 24 > /opt/imi-wordcloud/shared/organizer-password; docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T tools npm run admin:create -- teacher < /opt/imi-wordcloud/shared/organizer-password; fi'
+      - name: Verify public production routes
+        run: |
+          curl --fail --silent --show-error --retry 3 --max-time 15 https://imi-cloudpoll.ru/api/ready
+          curl --fail --silent --show-error --max-time 15 https://imi-cloudpoll.ru/e/mir-27-oct/student > /dev/null
+          curl --fail --silent --show-error --max-time 15 https://imi-cloudpoll.ru/e/mir-27-oct/employer > /dev/null
+          curl --fail --silent --show-error --max-time 15 https://imi-cloudpoll.ru/api/public/events/mir-27-oct/student/qr > /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://imi-cloudpoll.ru/api/admin/events)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://imi-cloudpoll.ru/.env)" = 404
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
