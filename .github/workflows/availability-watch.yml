@@ -1,0 +1,60 @@
+name: Observe recurring production availability
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/availability-watch.yml]
+permissions:
+  contents: read
+jobs:
+  public:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Observe HTTPS across two reported outage cycles
+        run: |
+          mkdir -p observations
+          for i in $(seq 1 150); do
+            date -u +'%FT%TZ' | tee -a observations/public.txt
+            for path in /api/ready /e/event-1f0133d8/all; do
+              printf '%s ' "$path" | tee -a observations/public.txt
+              curl -4 -sS --connect-timeout 4 --max-time 8 -o /dev/null -w 'status=%{http_code} connect=%{time_connect} tls=%{time_appconnect} first=%{time_starttransfer} total=%{time_total}\n' "https://imi-cloudpoll.ru$path" 2>&1 | tee -a observations/public.txt || true
+            done
+            sleep 10
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-availability
+          path: observations/
+          retention-days: 7
+  server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Observe local application and TLS independently
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh" observations
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -T -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -s' <<'REMOTE' | tee observations/server.txt
+          for i in $(seq 1 150); do
+            date -u +'%FT%TZ'
+            curl -sS --connect-timeout 2 --max-time 5 -o /dev/null -w 'local_app status=%{http_code} total=%{time_total}\n' http://127.0.0.1:3000/api/ready || true
+            curl -sS --resolve imi-cloudpoll.ru:443:127.0.0.1 --connect-timeout 2 --max-time 5 -o /dev/null -w 'local_tls status=%{http_code} tls=%{time_appconnect} total=%{time_total}\n' https://imi-cloudpoll.ru/api/ready || true
+            sleep 10
+          done
+          REMOTE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-availability
+          path: observations/
+          retention-days: 7
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
