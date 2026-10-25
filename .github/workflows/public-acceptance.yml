@@ -32,7 +32,7 @@ jobs:
         run: |
           SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
           scp "${SSH_OPTS[@]}" ops/public-smoke.mjs deploy@212.109.196.228:/opt/imi-wordcloud/shared/public-smoke.mjs
-          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'set -eu; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/public-smoke.mjs:/app/public-smoke.mjs:ro --mount type=bind,src=/opt/imi-wordcloud/shared/organizer-password,dst=/run/organizer-password,readonly tools node --import tsx /app/public-smoke.mjs' | tee public-acceptance.txt
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'set -eu; test -s /opt/imi-wordcloud/shared/organizer-password; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/public-smoke.mjs:/app/public-smoke.mjs:ro -v /opt/imi-wordcloud/shared/organizer-password:/run/organizer-password:ro tools node --import tsx /app/public-smoke.mjs' | tee public-acceptance.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
