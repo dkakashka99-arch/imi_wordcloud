@@ -1,0 +1,27 @@
+name: VPS connectivity
+on:
+  push:
+    branches: [feature/05-production-infrastructure]
+    paths: [.github/workflows/vps-connectivity.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Check public DNS and SSH without credentials
+        shell: python
+        run: |
+          import socket
+          for host, port in [('212.109.196.228',22), ('imi-cloudpoll.ru',443)]:
+              try:
+                  address = socket.gethostbyname(host)
+                  print(f'{host} resolves to {address}')
+                  with socket.create_connection((host,port),timeout=10) as connection:
+                      print(f'{host}:{port} TCP reachable')
+                      if port == 22:
+                          print(connection.recv(256).decode(errors='replace').strip())
+              except Exception as error:
+                  print(f'{host}:{port}: {type(error).__name__}: {error}')
