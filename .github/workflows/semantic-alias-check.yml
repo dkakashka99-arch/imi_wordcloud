@@ -1,0 +1,29 @@
+name: Verify salary abbreviation semantic grouping
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/semantic-alias-check.yml]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Check production GigaChat on synthetic words only
+        run: |
+          ssh -T -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'release=$(cat /opt/imi-wordcloud/shared/current-release); docker run --rm -i --read-only --tmpfs /tmp:size=32m --memory=256m --cpus=0.5 --cap-drop=ALL --security-opt=no-new-privileges:true --env-file /opt/imi-wordcloud/shared/app.env -v /opt/imi-wordcloud/shared/certs:/run/certs:ro "imi-wordcloud-tools:$release" node --import tsx --input-type=module' < ops/check-semantic-aliases.mjs
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
