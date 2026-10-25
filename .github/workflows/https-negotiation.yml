@@ -1,0 +1,59 @@
+name: Verify production HTTPS negotiation
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/https-negotiation.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Inspect server and enable privacy preserving timing diagnostics
+        env:
+          VPS_PASSWORD: ${{ secrets.VPS_BOOTSTRAP_PASSWORD }}
+        run: |
+          umask 077
+          cat > "$RUNNER_TEMP/ssh/askpass" <<'EOF'
+          #!/bin/sh
+          printf '%s\n' "$VPS_PASSWORD"
+          EOF
+          chmod 700 "$RUNNER_TEMP/ssh/askpass"
+          export SSH_ASKPASS="$RUNNER_TEMP/ssh/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=imi:0
+          setsid -w ssh -T -o PubkeyAuthentication=no -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" root@212.109.196.228 'bash -se' <<'REMOTE'
+          nginx -T 2>&1 | awk '/listen .*443|server_name|ssl_buffer_size|http2/ { print }'
+          for i in 1 2 3; do
+            curl --fail --silent --show-error --http2 --resolve imi-cloudpoll.ru:443:127.0.0.1 --max-time 10 -o /dev/null -w 'LOCAL_PROTOCOL=%{http_version} STATUS=%{http_code}\n' https://imi-cloudpoll.ru/api/ready
+          done
+          python3 - <<'PY'
+          import subprocess,collections
+          s=subprocess.run(['ss','-Hnto','sport = :443'],capture_output=True,text=True).stdout
+          rows=[x.split() for x in s.splitlines()]
+          print('HTTPS_TCP_STATES',dict(collections.Counter(x[0] for x in rows)))
+          print('HTTPS_PENDING_SEND_BYTES',sum(int(x[2]) for x in rows))
+          print('HTTPS_RETRANSMISSION_TIMERS',sum('timer:(on' in line for line in s.splitlines()))
+          PY
+          REMOTE
+      - name: Measure public QR navigation and health sequence
+        run: |
+          for path in / /e/mir-27-oct/screen /api/public/events/mir-27-oct/student/qr /e/mir-27-oct/student /api/public/events/mir-27-oct/student / /e/mir-27-oct/employer /api/ready; do
+            echo "ROUTE=$path"
+            curl -4 -sS --connect-timeout 5 --max-time 20 -o /dev/null -w 'status=%{http_code} dns=%{time_namelookup} connect=%{time_connect} tls=%{time_appconnect} first_byte=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' "https://imi-cloudpoll.ru$path"
+          done
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts" "$RUNNER_TEMP/ssh/askpass"
+
+# Inspect recurring ten-minute outages; do not restart services.
