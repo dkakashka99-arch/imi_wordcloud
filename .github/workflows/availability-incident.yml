@@ -1,0 +1,54 @@
+name: Diagnose public availability incident
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/availability-incident.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: DNS and HTTPS from independent external runner
+        run: |
+          for resolver in 1.1.1.1 8.8.8.8 77.88.8.8; do
+            echo "DNS_RESOLVER=$resolver"
+            dig @"$resolver" imi-cloudpoll.ru A +time=3 +tries=1 +noall +answer +comments || true
+          done
+          for resolver in ns1.firstvds.ru ns2.firstvds.ru; do
+            echo "AUTHORITATIVE=$resolver"
+            dig @"$resolver" imi-cloudpoll.ru A +time=3 +tries=1 +noall +answer +comments || true
+          done
+          curl --ipv4 --connect-timeout 10 --max-time 20 -fsS -o /dev/null -w 'APEX_HTTPS=%{http_code} remote=%{remote_ip} TLS=%{ssl_verify_result}\n' https://imi-cloudpoll.ru/
+          curl --ipv4 --connect-timeout 10 --max-time 20 -fsS https://imi-cloudpoll.ru/api/ready
+          curl --ipv4 --connect-timeout 10 --max-time 20 -sS -o /dev/null -w 'WWW_HTTPS=%{http_code} TLS=%{ssl_verify_result}\n' https://www.imi-cloudpoll.ru/ || true
+      - name: Inspect VPS health without exposing runtime secrets
+        run: |
+          ssh -i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -se' <<'REMOTE'
+          uptime
+          free -m
+          df -h /opt/imi-wordcloud
+          cd /opt/imi-wordcloud/current
+          export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release)
+          echo "RELEASE=$RELEASE"
+          docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml ps </dev/null
+          curl -fsS --max-time 10 http://127.0.0.1:3000/api/ready
+          curl -fsS --max-time 10 --resolve imi-cloudpoll.ru:443:127.0.0.1 https://imi-cloudpoll.ru/api/ready
+          curl -fsS --max-time 15 -o /dev/null -w 'MOSCOW_PUBLIC_HTTPS=%{http_code} TLS=%{ssl_verify_result}\n' https://imi-cloudpoll.ru/
+          ss -lnt
+          REMOTE
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
