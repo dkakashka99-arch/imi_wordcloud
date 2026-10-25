@@ -1,4 +1,4 @@
-name: Automatic semantic runtime diagnosis
+name: Semantic root cause synthetic diagnosis
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -30,11 +30,30 @@ jobs:
           compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
           app=$("${compose[@]}" ps -q app)
           docker exec "$app" node -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:Boolean(process.env.GIGACHAT_AUTH_KEY||process.env.GIGACHAT_AUTH_KEY_FILE)}))'
-          docker logs --since 2h "$app" 2>&1 | rg 'semantic_|Semantic worker' | tail -30 || true
-          "${compose[@]}" run --rm -T tools node --input-type=module <<'JS'
+          docker logs --since 6h "$app" 2>&1 | rg 'semantic_|Semantic worker' | tail -30 || true
+          "${compose[@]}" run --rm -T tools node --import tsx --input-type=module <<'JS'
           import {Pool} from 'pg';
           const db=new Pool({connectionString:process.env.DATABASE_URL});
-          for(const sql of ["SELECT status,error,count(*)::int n,max(attempts) attempts FROM semantic_queue GROUP BY status,error", "SELECT method,version,count(*)::int n FROM semantic_history GROUP BY method,version", "SELECT e.slug,sq.source,sq.status,sq.error,sq.attempts,wa.target FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id LEFT JOIN word_aliases wa ON wa.question_id=sq.question_id AND wa.source=sq.source WHERE sq.source IN ('проверка сафари','проверка safari','навигация','навигацич')"]){console.log(JSON.stringify((await db.query(sql)).rows));}
+          for(const sql of ["SELECT e.rehearsal,e.archived,sq.status,sq.error,count(*)::int n,min(sq.attempts) min_attempts,max(sq.attempts) max_attempts FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id GROUP BY 1,2,3,4", "SELECT method,version,count(*)::int n FROM semantic_history GROUP BY method,version"]){console.log(JSON.stringify((await db.query(sql)).rows));}
+          const {gigaClient}=await import('./src/lib/ai/client.ts');
+          const {validateMatches}=await import('./src/lib/semantic/worker.ts');
+          const {z}=await import('zod');
+          const client=gigaClient(),model=await client.model();
+          const sources=['проверка сафари','навигацич','стабильность','низкая зарплата'];
+          const candidates=['проверка safari','навигация','стабильность','высокая зарплата',...sources];
+          const schema=z.toJSONSchema(z.object({matches:z.array(z.object({source:z.string(),target:z.string(),relation:z.enum(['synonym','abbreviation','spelling'])})).max(12)}).strict());
+          for(let i=0;i<3;i++){
+            let phase='generation';
+            try{
+              const r=await client.generate(model,'Объединяй эквивалентные короткие ответы на вопрос: синонимы, сокращения и очевидные опечатки. Не объединяй разные смыслы и общие темы. Возвращай source только из sources, target только из candidates; неоднозначные пропускай.',{question:'Что важно при выборе работы?',sources,candidates},schema);
+              phase='server_validation';
+              const parsed=z.object({matches:z.array(z.object({source:z.string(),target:z.string(),relation:z.enum(['synonym','abbreviation','spelling'])}))}).safeParse(r.result);
+              const matches=parsed.success?parsed.data.matches:[];
+              console.log(JSON.stringify({event:'synthetic_shape',model:r.model,round:i,schemaValid:parsed.success,matchCount:matches.length,unknownSource:matches.filter(m=>!sources.includes(m.source)).length,unknownTarget:matches.filter(m=>!candidates.includes(m.target)).length,selfMatches:matches.filter(m=>m.source===m.target).length,duplicateSources:matches.length-new Set(matches.map(m=>m.source)).size,targetIsSource:matches.filter(m=>matches.some(n=>n.source===m.target)).length}));
+              validateMatches(r.result,sources,candidates);
+              console.log(JSON.stringify({event:'legacy_synthetic',round:i,status:'PASS'}));
+            }catch(e){console.log(JSON.stringify({event:'legacy_synthetic',round:i,phase,status:'FAIL',code:e.code||e.name,detail:e.detail}));}
+          }
           await db.end();
           JS
           REMOTE
