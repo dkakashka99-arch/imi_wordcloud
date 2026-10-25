@@ -48,6 +48,13 @@
   "sourcePR": 16,
   "fullExternalObservation": {
     "run": 40204720350,
-    "status": "still running at 15:25:55 UTC"
-  }
+    "status": "completed success",
+    "samples": 300,
+    "first": "2026-10-25T14:58:29.5353104Z",
+    "last": "2026-10-25T15:27:22.1523663Z",
+    "failures": 0,
+    "curlErrors": 0,
+    "maxSeconds": 4.689083
+  },
+  "checkedAtUTC": "2026-10-25T15:29:00Z"
 }
