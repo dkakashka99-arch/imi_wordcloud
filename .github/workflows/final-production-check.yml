@@ -1,0 +1,64 @@
+name: Final production acceptance
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/final-production-check.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Wait for successful final production release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in $(seq 1 60); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=7d20b913ffa348586261fcbfb79240253089107b&event=workflow_run&per_page=30")
+            if printf '%s' "$runs" | jq -e '[.workflow_runs[] | select(.name=="Production")] | any(.[]; .conclusion=="success") and all(.[]; .status=="completed")' >/dev/null; then exit 0; fi
+            sleep 10
+          done
+          exit 1
+      - name: Verify exact release and production data
+        run: |
+          ssh -i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -se' <<'REMOTE'
+          set -eu
+          test "$(cat /opt/imi-wordcloud/shared/current-release)" = 7d20b913ffa348586261fcbfb79240253089107b
+          test -s /opt/imi-wordcloud/shared/offsite-backup-7d20b913ffa348586261fcbfb79240253089107b
+          cd /opt/imi-wordcloud/current
+          export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release)
+          echo "CURRENT_PRODUCTION_RELEASE=$RELEASE"
+          docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml ps
+          docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml exec -T db psql -U mir -d mir_wordcloud -v ON_ERROR_STOP=1 -c "SELECT e.slug,q.title,q.status FROM events e JOIN questions q ON q.event_id=e.id WHERE e.slug='mir-27-oct' ORDER BY q.title; SELECT count(*) AS real_event_answers FROM submissions WHERE event_id=(SELECT id FROM events WHERE slug='mir-27-oct'); SELECT count(*) AS remaining_rehearsal_events FROM events WHERE rehearsal; SELECT login,active FROM admins;"
+          test -s /opt/imi-wordcloud/shared/organizer-password
+          test "$(stat -c %a /opt/imi-wordcloud/shared/app.env)" = 600
+          test "$(stat -c %a /opt/imi-wordcloud/shared/compose.env)" = 600
+          cat /opt/imi-wordcloud/shared/offsite-backup-7d20b913ffa348586261fcbfb79240253089107b
+          ss -lnt
+          REMOTE
+      - name: Check public HTTPS and independent poll QR codes
+        run: |
+          curl -fsS --max-time 15 https://imi-cloudpoll.ru/api/ready
+          for group in student employer; do
+            curl -fsS --max-time 15 "https://imi-cloudpoll.ru/e/mir-27-oct/$group" > /dev/null
+            curl -fsS --max-time 15 "https://imi-cloudpoll.ru/api/public/events/mir-27-oct/$group/qr" > /dev/null
+          done
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://imi-cloudpoll.ru/.env)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://imi-cloudpoll.ru/api/admin/events)" = 401
+          test "$(curl -fsSL --max-time 15 -o /dev/null -w '%{url_effective}' http://imi-cloudpoll.ru/)" = https://imi-cloudpoll.ru/
+          echo 'FINAL_PUBLIC_ACCEPTANCE_PASS'
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
