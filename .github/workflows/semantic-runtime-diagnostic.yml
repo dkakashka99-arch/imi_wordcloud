@@ -45,7 +45,7 @@ jobs:
           root=/opt/imi-wordcloud
           export RELEASE=$(cat "$root/shared/current-release")
           cd "$root/releases/$RELEASE"
-          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /tmp/classifier.ts:/app/src/lib/semantic/classifier.ts:ro -v /tmp/client.ts:/app/src/lib/ai/client.ts:ro -v /tmp/check-semantic-live.ts:/app/scripts/check-semantic-live.ts:ro tools sh -c 'failed=0; for model in GigaChat-2-Pro GigaChat-2-Max; do for round in 1 2; do GIGACHAT_MODEL="$model" node --import tsx scripts/check-semantic-live.ts || failed=1; done; done; exit "$failed"'
+          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /tmp/classifier.ts:/app/src/lib/semantic/classifier.ts:ro -v /tmp/client.ts:/app/src/lib/ai/client.ts:ro -v /tmp/check-semantic-live.ts:/app/scripts/check-semantic-live.ts:ro -e GIGACHAT_MODEL=GigaChat-2 tools sh -c 'failed=0; for round in 1 2; do node --import tsx scripts/check-semantic-live.ts || failed=1; done; exit "$failed"'
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
