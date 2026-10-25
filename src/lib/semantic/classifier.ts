@@ -79,10 +79,20 @@ export function semanticContract(sources: string[], candidates: string[]) {
         }
         return [items[0]];
       });
-      // Keep independent valid pairs, discard every edge in a chain/cycle.
-      const outgoing = new Set(unique.map((m) => m.source));
-      const incoming = new Set(unique.map((m) => m.target));
-      const matches = unique.filter((m) => {
+      // A mutual equivalence proposal is oriented once by the immutable candidate
+      // ordering, then independently verified. Never install both directions.
+      const oriented = unique.filter((m) => {
+        const reverse = unique.find((n) => n.source === m.target && n.target === m.source);
+        if (reverse && candidates.indexOf(m.target) > candidates.indexOf(m.source)) {
+          rejected.CYCLE_ORIENTED = (rejected.CYCLE_ORIENTED || 0) + 1;
+          return false;
+        }
+        return true;
+      });
+      // Longer chains remain ambiguous; retain unrelated valid pairs.
+      const outgoing = new Set(oriented.map((m) => m.source));
+      const incoming = new Set(oriented.map((m) => m.target));
+      const matches = oriented.filter((m) => {
         if (outgoing.has(m.target) || incoming.has(m.source)) {
           reject('CHAIN_OR_CYCLE', m.source);
           return false;

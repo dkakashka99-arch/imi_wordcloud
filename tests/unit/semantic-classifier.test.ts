@@ -30,6 +30,7 @@ it('rejects cycles, chains and conflicting targets but retains independent corre
     relation: 'synonym',
   });
   expect(c.decode({ matches: [m(0, 1), m(1, 0), m(2, 4)] }).matches).toEqual([
+    { source: 'b', target: 'a', relation: 'synonym' },
     { source: 'c', target: 'e', relation: 'synonym' },
   ]);
   expect(c.decode({ matches: [m(0, 1), m(1, 2), m(3, 4)] }).matches).toEqual([
