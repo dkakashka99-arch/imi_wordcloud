@@ -67,7 +67,15 @@ it('keeps premoderated answers off public aggregates, including HTML, then publi
   const f = await fixture();
   await moderate(f.id, f.q, { action: 'rules', premoderation: true, stopWords: [], aliases: [] });
   const text = '<img src=x onerror=alert(1)>';
-  await submit(f.slug, 'all', 'xss', answer(f.q, text));
+  await expect(submit(f.slug, 'all', 'xss', answer(f.q, text))).rejects.toMatchObject({
+    status: 400,
+  });
+  // Existing imported rows still need safe moderation/export after stricter input validation.
+  await submit(f.slug, 'all', 'xss', answer(f.q, 'legacy-html'));
+  await database().query(
+    'UPDATE submissions SET original_text=$2,canonical_key=$2 WHERE question_id=$1',
+    [f.q, text],
+  );
   expect((await screenState(f.slug)).audiences[0].words).toEqual([]);
   const m = await moderationState(f.id, f.q);
   expect(m.submissions[0]).toMatchObject({ originalText: text, approved: false });

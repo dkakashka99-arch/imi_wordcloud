@@ -32,7 +32,7 @@ test.afterAll(async () => {
   await db.query('DELETE FROM login_limits WHERE key=$1', [`login:${digest(login)}`]);
   await db.end();
 });
-test('moderation hides and restores literal HTML, CSV downloads and comparison keeps groups separate', async ({
+test('moderation rejects HTML, hides and restores accepted text, CSV downloads and single QR', async ({
   page,
   context,
 }) => {
@@ -57,7 +57,10 @@ test('moderation hides and restores literal HTML, CSV downloads and comparison k
   await expect(page.getByText('Сохранено. Экран проектора обновится автоматически.')).toBeVisible();
   const phone = await context.newPage();
   await phone.goto(`/e/${slug}/all`);
-  const payload = '<img src=x onerror=alert(1)>';
+  const payload = 'надежность';
+  await phone.getByRole('textbox', { name: 'Ваш ответ' }).fill('<img src=x onerror=alert(1)>');
+  await phone.getByRole('button', { name: 'Отправить' }).click();
+  await expect(phone.getByRole('alert')).toContainText('HTML');
   await phone.getByRole('textbox', { name: 'Ваш ответ', exact: true }).fill(payload);
   await phone.getByRole('button', { name: 'Отправить', exact: false }).click();
   await expect(phone.getByRole('status')).toContainText('Ответ принят');
@@ -75,9 +78,8 @@ test('moderation hides and restores literal HTML, CSV downloads and comparison k
   const download = page.waitForEvent('download');
   await page.getByRole('link', { name: 'CSV: все исходные ответы', exact: true }).click();
   expect((await download).suggestedFilename()).toMatch(/answers\.csv$/);
-  await screen.getByRole('button', { name: 'Сравнить группы', exact: true }).click();
-  await expect(screen.getByRole('heading', { name: 'Участники', exact: true })).toBeVisible();
-  await expect(screen.getByRole('heading', { name: 'Партнёры', exact: true })).toBeVisible();
+  await expect(screen.getByRole('button', { name: 'Сравнить группы' })).toHaveCount(0);
+  await expect(screen.locator('.qr img')).toHaveCount(1);
   expect(
     await screen.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBe(true);

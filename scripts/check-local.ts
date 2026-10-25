@@ -28,6 +28,8 @@ try {
   await run(['--import', 'tsx', 'scripts/seed.ts', 'ops/event-27-oct.json']);
   await run(['node_modules/vitest/vitest.mjs', 'run', 'tests/integration']);
   await run(['--import', 'tsx', 'scripts/check-http.ts']);
+  if (process.argv.includes('--browser'))
+    await run(['node_modules/@playwright/test/cli.js', 'test']);
 } finally {
   await server.stop();
   await db.close();

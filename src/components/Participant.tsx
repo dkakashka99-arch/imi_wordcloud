@@ -51,7 +51,7 @@ export function Participant({ slug, audience }: { slug: string; audience: string
         failures++;
         if (live) setError(e instanceof Error ? e.message : 'Нет связи.');
       } finally {
-        if (live) timer = setTimeout(refresh, Math.min(30000, 8000 * 2 ** failures));
+        if (live) timer = setTimeout(refresh, Math.min(30000, 3000 * 2 ** failures));
       }
     }
     void refresh();
@@ -106,7 +106,7 @@ export function Participant({ slug, audience }: { slug: string; audience: string
   }
   const status = data?.question?.status;
   return (
-    <main className="shell">
+    <main className="shell participant">
       <header className="top">
         <Link className="brand" href="/">
           <b>мир</b> облако слов
@@ -120,7 +120,7 @@ export function Participant({ slug, audience }: { slug: string; audience: string
         {status === 'open' ? (
           <>
             <p className="lead">
-              Одно слово или короткая фраза. Осталось ответов: {data?.remaining}.
+              Одна мысль: слово или короткая фраза. Осталось ответов: {data?.remaining}.
             </p>
             <form onSubmit={send} className="form-row">
               <input

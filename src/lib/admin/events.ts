@@ -15,7 +15,7 @@ export async function getEvent(id: string): Promise<AdminEvent> {
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const event = await client.query(
-      'SELECT id,slug,title,archived,rehearsal,created_at "createdAt" FROM events WHERE id=$1',
+      'SELECT id,slug,title,archived,rehearsal,public_audience_key "publicAudienceKey",created_at "createdAt" FROM events WHERE id=$1',
       [id],
     );
     if (!event.rows[0]) throw new HttpError(404, 'Мероприятие не найдено.');

@@ -4,6 +4,7 @@ import { HttpError } from '@/lib/http';
 import { normalizeWord } from '@/lib/normalize';
 const word = z.string().min(1).max(240);
 export const moderationInput = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('retrySemantic') }).strict(),
   z
     .object({ action: z.literal('visibility'), submissionId: z.uuid(), approved: z.boolean() })
     .strict(),
@@ -21,6 +22,7 @@ export type ModerationState = {
   premoderation: boolean;
   stopWords: string[];
   aliases: { source: string; target: string }[];
+  semantic: { pending: number; review: number; errors: number };
   total: number;
   page: number;
   submissions: {
@@ -83,8 +85,13 @@ export async function moderationState(
       `SELECT s.id,s.original_text "originalText",s.canonical_key "canonicalKey",a.label audience,s.approved,s.is_demo "isDemo",s.created_at "createdAt" FROM submissions s JOIN audiences a ON a.id=s.audience_id WHERE s.question_id=$1 ORDER BY s.created_at DESC,s.id DESC LIMIT 100 OFFSET $2`,
       [questionId, page * 100],
     );
+    const queue = await c.query(
+      "SELECT count(*) FILTER(WHERE status='pending')::int pending,count(*) FILTER(WHERE status='review')::int review,count(*) FILTER(WHERE error IS NOT NULL)::int errors FROM semantic_queue WHERE question_id=$1",
+      [questionId],
+    );
     await c.query('COMMIT');
     return {
+      semantic: queue.rows[0],
       premoderation: q.rows[0].premoderation,
       stopWords: stops.rows.map((x) => x.word),
       aliases: aliases.rows,
@@ -112,7 +119,12 @@ export async function moderate(eventId: string, questionId: string, input: Moder
       questionId,
     ]);
     if (!q.rowCount) throw new HttpError(404, 'Вопрос не найден.');
-    if (input.action === 'visibility') {
+    if (input.action === 'retrySemantic') {
+      await c.query(
+        "UPDATE semantic_queue SET status='pending',available_at=now(),error=NULL WHERE question_id=$1 AND status IN('pending','review')",
+        [questionId],
+      );
+    } else if (input.action === 'visibility') {
       const s = await c.query(
         'UPDATE submissions SET approved=$3 WHERE question_id=$1 AND id=$2 RETURNING id',
         [questionId, input.submissionId, input.approved],
@@ -120,21 +132,33 @@ export async function moderate(eventId: string, questionId: string, input: Moder
       if (!s.rowCount) throw new HttpError(404, 'Ответ не найден.');
     } else if (rules) {
       await c.query('DELETE FROM stop_words WHERE question_id=$1', [questionId]);
+      await c.query(
+        "INSERT INTO semantic_history(question_id,source,target,method,version) SELECT question_id,source,source,'manual-reset','organizer-v1' FROM word_aliases WHERE question_id=$1",
+        [questionId],
+      );
       await c.query('DELETE FROM word_aliases WHERE question_id=$1', [questionId]);
       for (const word of rules.stopWords)
         await c.query('INSERT INTO stop_words(question_id,word) VALUES($1,$2)', [questionId, word]);
-      for (const a of rules.aliases)
+      for (const a of rules.aliases) {
         await c.query('INSERT INTO word_aliases(question_id,source,target) VALUES($1,$2,$3)', [
           questionId,
           a.source,
           a.target,
         ]);
+        await c.query(
+          "INSERT INTO semantic_history(question_id,source,target,method,version) VALUES($1,$2,$3,'manual','organizer-v1')",
+          [questionId, a.source, a.target],
+        );
+      }
       await c.query('UPDATE questions SET premoderation=$2 WHERE id=$1', [
         questionId,
         input.premoderation,
       ]);
     }
-    await c.query('UPDATE questions SET revision=revision+1 WHERE id=$1', [questionId]);
+    await c.query(
+      'UPDATE questions SET revision=revision+1,semantic_revision=semantic_revision+1 WHERE id=$1',
+      [questionId],
+    );
     await c.query('COMMIT');
     return { saved: true };
   } catch (e) {

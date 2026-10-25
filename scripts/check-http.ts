@@ -94,7 +94,7 @@ try {
   assert((await qr.text()).includes('<svg'));
   const page = await fetch(`${origin}/e/${slug}/screen`);
   assert.equal(page.status, 200);
-  assert((await page.text()).includes('облако слов'));
+  assert((await page.text()).includes('диалог о будущем'));
   await stopServer();
   server = startServer();
   await waitReady();

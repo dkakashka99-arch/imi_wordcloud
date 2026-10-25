@@ -17,7 +17,7 @@ afterAll(async () => {
   if (admin) await database().query('DELETE FROM admins WHERE id=$1', [admin]);
   await database().end();
 });
-async function fixture(words = ['доход', 'зарплата']) {
+async function fixture(words = ['доход', 'зарплата'], legacy = false) {
   const slug = `ai-${randomUUID()}`;
   const { id } = await createEvent('AI test', slug);
   ids.push(id);
@@ -31,12 +31,18 @@ async function fixture(words = ['доход', 'зарплата']) {
   });
   const q = (await getEvent(id)).questions[0].id;
   await eventCommand(id, { action: 'activate', questionId: q });
-  for (const word of words)
+  for (const [index, word] of words.entries()) {
     await submit(slug, 'all', randomUUID(), {
       questionId: q,
-      text: word,
+      text: legacy ? `legacy-${index}` : word,
       idempotencyKey: randomUUID(),
     });
+    if (legacy)
+      await database().query(
+        'UPDATE submissions SET original_text=$2,canonical_key=$2 WHERE question_id=$1 AND canonical_key=$3',
+        [q, word.toLowerCase(), `legacy-${index}`],
+      );
+  }
   return { id, q, slug };
 }
 const generator = (result: unknown) => ({
@@ -111,13 +117,14 @@ it('keeps suggestions pending, caches generation, approves/rejects per item and 
   await age();
 });
 it('filters obvious personal data and hides only explicitly approved moderation suggestions', async () => {
-  const f = await fixture([
-    'спам',
-    'команда',
-    'name@example.com',
-    '+7 999 111-22-33',
-    'Иван Иванов',
-  ]);
+  const f = await fixture(
+    ['спам', 'команда', 'name@example.com', '+7 999 111-22-33', 'Иван Иванов'],
+    true,
+  );
+  await database().query(
+    "UPDATE submissions SET original_text='Иван Иванов' WHERE question_id=$1 AND canonical_key='иван иванов'",
+    [f.q],
+  );
   const state = await aiState(f.id, f.q);
   expect(state.snapshot.words.map((w) => w.text).sort()).toEqual(['команда', 'спам']);
   expect(state.snapshot.omitted).toBe(3);

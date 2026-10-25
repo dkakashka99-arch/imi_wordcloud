@@ -4,11 +4,8 @@ import Image from 'next/image';
 import type { ScreenState } from '@/lib/contracts';
 import { WordCloud } from './WordCloud';
 import { requestJson } from '@/lib/client-request';
-export function Screen({ slug, origin }: { slug: string; origin: string }) {
+export function Screen({ slug }: { slug: string; origin: string }) {
   const [data, setData] = useState<ScreenState | null>(null),
-    [selected, setSelected] = useState('student'),
-    [compare, setCompare] = useState(false),
-    [second, setSecond] = useState(''),
     [error, setError] = useState(false);
   useEffect(() => {
     let live = true;
@@ -43,131 +40,69 @@ export function Screen({ slug, origin }: { slug: string; origin: string }) {
       controller.abort();
     };
   }, [slug]);
-  const group = data?.audiences.find((a) => a.key === selected) || data?.audiences[0];
+  const group = data?.audiences.find((a) => a.key === 'student') || data?.audiences[0];
+  const status = group?.question?.status;
   return (
     <main className="screen">
       <header className="top">
-        <span className="brand">мир · облако слов</span>
-        <div className="flex gap-3 flex-wrap">
-          {data?.audiences.map((a) => (
-            <button
-              key={a.key}
-              className="button"
-              aria-pressed={group?.key === a.key}
-              onClick={() => setSelected(a.key)}
-            >
-              {a.label}
-            </button>
-          ))}
+        <span className="brand">
+          мир <span className="brand-divider">/</span> диалог о будущем
+        </span>
+        <div className="screen-tools">
+          <span className={`live-status ${status === 'open' ? 'is-open' : ''}`}>
+            <i />
+            {status === 'open'
+              ? 'идёт опрос'
+              : status === 'closed'
+                ? 'опрос завершён'
+                : 'ожидаем продолжения'}
+          </span>
           <button
-            className="button"
+            className="fullscreen-control"
+            aria-label="Полный экран"
             onClick={() => {
-              void document.documentElement.requestFullscreen?.().catch(() => setError(true));
+              void document.documentElement.requestFullscreen?.().catch(() => {});
             }}
           >
-            Полный экран
+            ⛶
           </button>
         </div>
-        {data && data.audiences.length > 1 && (
-          <button className="button" aria-pressed={compare} onClick={() => setCompare((v) => !v)}>
-            Сравнить группы
-          </button>
-        )}
       </header>
-      {data?.rehearsal && <p className="notice">РЕПЕТИЦИЯ · тестовые ответы</p>}
-      <p className="eyebrow" style={{ color: '#b7c9b3', marginTop: 40 }}>
-        {data?.title || 'Подключение к мероприятию'}
-      </p>
-      <h1>{group?.question?.title || 'Готовимся к началу'}</h1>
-      {compare && data && group ? (
-        <>
-          <label>
-            Вторая группа{' '}
-            <select
-              value={
-                data.audiences.some((a) => a.key === second && a.key !== group.key)
-                  ? second
-                  : data.audiences.find((a) => a.key !== group.key)?.key
-              }
-              onChange={(e) => setSecond(e.target.value)}
-            >
-              {data.audiences
-                .filter((a) => a.key !== group.key)
-                .map((a) => (
-                  <option key={a.key} value={a.key}>
-                    {a.label}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <div className="comparison-grid">
-            {[
-              group,
-              data.audiences.find((a) => a.key === second && a.key !== group.key) ||
-                data.audiences.find((a) => a.key !== group.key),
-            ]
-              .filter((a) => !!a)
-              .map((a) => (
-                <section key={a.key}>
-                  <h2>{a.label}</h2>
-                  <h3>{a.question?.title || 'Вопрос не выбран'}</h3>
-                  <WordCloud words={a.words} />
-                  <p>
-                    {a.answerCount} ответов · ≈{a.participantCount} участников по ID браузера
-                  </p>
-                  <p className="screen-link">
-                    {origin}/e/{slug}/{a.key}
-                  </p>
-                  <Image
-                    unoptimized
-                    src={`/api/public/events/${encodeURIComponent(slug)}/${encodeURIComponent(a.key)}/qr`}
-                    width={120}
-                    height={120}
-                    alt={`QR-код для группы: ${a.label}`}
-                  />
-                </section>
-              ))}
+      <div className="screen-question">
+        <p className="eyebrow">
+          {data?.title || 'Подключение к мероприятию'}
+          {data?.rehearsal ? ' · репетиция' : ''}
+        </p>
+        <h1>{group?.question?.title || 'Готовимся к началу'}</h1>
+      </div>
+      <section className="screen-grid">
+        <WordCloud key={group?.question?.id} words={group?.words || []} />
+        <aside className="join-panel">
+          <span className="join-number">ВАШ ГОЛОС ВАЖЕН</span>
+          <div className="qr">
+            <Image
+              unoptimized
+              src={`/api/public/events/${encodeURIComponent(slug)}/${encodeURIComponent(group?.key || 'student')}/qr`}
+              width={240}
+              height={240}
+              alt={`QR-код для группы: ${group?.label || 'Студенты'}`}
+            />
           </div>
-          <p className="help">
-            Сравниваются количества ответов, а не доли всех присутствующих. У групп могут быть
-            разные вопросы и число участников.
+          <h2>
+            Сканируйте
+            <br />и отвечайте
+          </h2>
+          <p>
+            Одна мысль — один ответ.
+            <br />
+            Без регистрации.
           </p>
-        </>
-      ) : (
-        <section className="screen-grid">
-          <div>
-            <WordCloud words={group?.words || []} />
-            <p>
-              {group?.answerCount || 0} ответов · ≈{group?.participantCount || 0} участников по ID
-              браузера
-            </p>
+          <div className="answer-stat">
+            <strong>{group?.answerCount || 0}</strong>
+            <span>ответов получено</span>
           </div>
-          <aside>
-            {group && (
-              <div className="qr">
-                <Image
-                  unoptimized
-                  src={`/api/public/events/${encodeURIComponent(slug)}/${encodeURIComponent(group.key)}/qr`}
-                  width={176}
-                  height={176}
-                  alt={`QR-код для группы: ${group.label}`}
-                  style={{ width: '100%', height: '100%' }}
-                />
-              </div>
-            )}
-            <p className="screen-link">
-              {origin}/e/{slug}/{group?.key || ''}
-            </p>
-            <p>
-              Отсканируйте код
-              <br />и отправьте свой ответ
-            </p>
-            {group?.question?.status !== 'open' && (
-              <p className="notice">Приём ответов ещё не открыт или приостановлен</p>
-            )}
-          </aside>
-        </section>
-      )}
+        </aside>
+      </section>
       {group?.summary && (
         <section className="ai-summary">
           <h2>Итоги · одобрено организатором</h2>
@@ -176,17 +111,16 @@ export function Screen({ slug, origin }: { slug: string; origin: string }) {
               <li key={index}>{point.text}</li>
             ))}
           </ul>
-          <p className="help">
-            Подготовлено GigaChat по снимку ответов. При новых ответах резюме скрывается до
-            повторного анализа.
-          </p>
         </section>
       )}
-      {error && (
-        <p className="notice" role="status">
-          Связь прервалась. Показываем последние полученные данные.
-        </p>
-      )}
+      <footer className="screen-footer">
+        <span>Будущее начинается с диалога</span>
+        <span>
+          {error
+            ? 'Восстанавливаем связь · последние данные сохранены'
+            : 'Ответы обновляются автоматически'}
+        </span>
+      </footer>
     </main>
   );
 }

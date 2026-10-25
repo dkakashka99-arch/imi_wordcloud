@@ -263,6 +263,13 @@ export function EventEditor({ initial, origin }: { initial: AdminEvent; origin: 
       setBusy(false);
     }
   }
+  const publicEvent = event.publicAudienceKey
+    ? { ...event, audiences: event.audiences.filter((a) => a.key === event.publicAudienceKey) }
+    : event;
+  const visibleQuestions = event.questions.filter((q) =>
+    publicEvent.audiences.some((a) => q.audienceIds.includes(a.id)),
+  );
+  const archivedQuestions = event.questions.filter((q) => !visibleQuestions.includes(q));
   return (
     <>
       <Link className="back-link" href="/admin">
@@ -389,24 +396,32 @@ export function EventEditor({ initial, origin }: { initial: AdminEvent; origin: 
         <span>{event.questions.length}</span>
       </div>
       <div className="question-list">
-        {event.questions.map((q) => (
-          <QuestionCard key={q.id} question={q} event={event} busy={busy} run={run} />
+        {visibleQuestions.map((q) => (
+          <QuestionCard key={q.id} question={q} event={publicEvent} busy={busy} run={run} />
         ))}
       </div>
-      {!event.questions.length && (
+      {archivedQuestions.length > 0 && (
+        <details className="card">
+          <summary>Архивные вопросы других аудиторий ({archivedQuestions.length})</summary>
+          {archivedQuestions.map((q) => (
+            <QuestionCard key={q.id} question={q} event={event} busy={busy} run={run} />
+          ))}
+        </details>
+      )}
+      {!visibleQuestions.length && (
         <p className="notice">
           Добавьте первый вопрос. Он появится у участников, когда вы нажмёте «Запустить вопрос».
         </p>
       )}
       <section className="card">
         <h3>Новый вопрос</h3>
-        <QuestionForm event={event} busy={busy} save={run} />
+        <QuestionForm event={publicEvent} busy={busy} save={run} />
       </section>
       <div className="admin-section-title">
         <h2>Группы и приглашения</h2>
       </div>
       <div className="cards">
-        {event.audiences.map((a) => (
+        {publicEvent.audiences.map((a) => (
           <AudienceCard
             key={`${a.id}-${a.label}`}
             audience={a}
