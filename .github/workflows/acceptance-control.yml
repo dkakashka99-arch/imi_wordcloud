@@ -12,4 +12,5 @@ jobs:
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/40188610350/cancel"
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/40187563211/cancel" || true
