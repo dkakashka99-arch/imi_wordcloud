@@ -41,7 +41,7 @@ Match all
 EOF
 sshd -t
 systemctl reload ssh
-ssh_port=$(sshd -T | awk '$1=="port" {print $2; exit}')
+ssh_port=$(sshd -T | awk '$1=="port" && !seen++ {print $2}')
 ufw allow "${ssh_port}/tcp"
 ufw allow 80/tcp
 ufw allow 443/tcp
