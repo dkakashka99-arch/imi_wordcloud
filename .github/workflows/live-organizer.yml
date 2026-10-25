@@ -1,0 +1,37 @@
+name: Live organizer acceptance
+on:
+  push:
+    branches: [ops/initial-vps-access]
+    paths: [.github/workflows/live-organizer.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use verified permanent deploy secret
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'test -s /opt/imi-wordcloud/shared/app.env; test -s /opt/imi-wordcloud/shared/certs/russian-trusted-ca.pem; echo HOST_READY'
+      - name: Verify organizer workflows against public HTTPS and real database
+        run: |
+          SSH_OPTS=(-i "$RUNNER_TEMP/ssh/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts")
+          scp "${SSH_OPTS[@]}" ops/live-admin.ts deploy@212.109.196.228:/opt/imi-wordcloud/shared/live-admin.ts
+          ssh "${SSH_OPTS[@]}" deploy@212.109.196.228 'set -eu; cd /opt/imi-wordcloud/current; export RELEASE=$(cat /opt/imi-wordcloud/shared/current-release); docker compose --env-file /opt/imi-wordcloud/shared/compose.env -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/live-admin.ts:/app/scripts/live-admin.ts:ro tools node --import tsx scripts/live-admin.ts'
+      - name: Check public readiness and exposed paths
+        run: |
+          curl -fsS --max-time 15 https://imi-cloudpoll.ru/api/ready
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://imi-cloudpoll.ru/.env)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://imi-cloudpoll.ru/api/admin/events)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://imi-cloudpoll.ru/ops/app.env)" = 404
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
