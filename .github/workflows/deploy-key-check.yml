@@ -21,7 +21,7 @@ jobs:
           python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/keycheck/key"
           ssh-keygen -y -P '' -f "$RUNNER_TEMP/keycheck/key" > /dev/null
           printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/keycheck/known_hosts"
-          ssh -i "$RUNNER_TEMP/keycheck/key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/keycheck/known_hosts" deploy@212.109.196.228 'echo PERMANENT_DEPLOY_SECRET_OK; docker ps --format "{{.Names}} {{.Status}}"; if test -f /opt/imi-wordcloud/shared/current-release; then cat /opt/imi-wordcloud/shared/current-release; fi'
+          ssh -i "$RUNNER_TEMP/keycheck/key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/keycheck/known_hosts" deploy@212.109.196.228 'echo PERMANENT_DEPLOY_SECRET_OK; find /opt/imi-wordcloud/incoming -maxdepth 2 -type f -printf "%f %s bytes\\n"; docker ps --format "{{.Names}} {{.Status}}"; if test -f /opt/imi-wordcloud/shared/current-release; then cat /opt/imi-wordcloud/shared/current-release; fi'
       - name: Probe public HTTPS response
         run: |
           curl --silent --show-error --connect-timeout 5 --max-time 15 -o /dev/null -w 'HTTPS status: %{http_code}\\n' https://imi-cloudpoll.ru/api/ready
