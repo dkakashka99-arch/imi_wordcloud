@@ -168,6 +168,8 @@ const chatSchema = z.object({
 export class GigaClient {
   private token: { value: string; expires: number } | undefined;
   private refreshing: Promise<string> | undefined;
+  private catalog: { ids: string[]; expires: number } | undefined;
+  private discovering: Promise<string[]> | undefined;
   constructor(
     private config: AiConfig,
     private send: Transport = transport,
@@ -177,6 +179,7 @@ export class GigaClient {
     if (this.refreshing) return this.refreshing;
     this.refreshing = (async () => {
       // OAuth is safe to retry; chat generation is not retried after ambiguous server errors.
+      const deadline = Date.now() + this.config.timeout;
       for (let attempt = 0; attempt < 2; attempt++) {
         const r = await this.send(
           'https://ngw.devices.sberbank.ru:9443/api/v2/oauth',
@@ -187,7 +190,7 @@ export class GigaClient {
             Accept: 'application/json',
           },
           new URLSearchParams({ scope: this.config.scope }).toString(),
-          this.config,
+          { ...this.config, timeout: this.remaining(deadline) },
         );
         if ((r.status === 429 || r.status >= 500) && attempt === 0) {
           await new Promise((r) => setTimeout(r, 250));
@@ -222,9 +225,16 @@ export class GigaClient {
               : 'request_rejected',
     );
   }
-  private async api(path: string, body?: unknown) {
+  private remaining(deadline: number) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new AiError('timeout');
+    return remaining;
+  }
+  private async api(path: string, body?: unknown, deadline = Date.now() + this.config.timeout) {
     let token = await this.auth();
-    for (let attempt = 0; attempt < 2; attempt++) {
+    let refreshed = false,
+      quotaRetries = 0;
+    for (;;) {
       const r = await this.send(
         'https://api.giga.chat/v1/' + path,
         {
@@ -233,22 +243,45 @@ export class GigaClient {
           Accept: 'application/json',
         },
         body === undefined ? undefined : JSON.stringify(body),
-        this.config,
+        { ...this.config, timeout: this.remaining(deadline) },
       );
-      if (r.status === 401 && attempt === 0) {
+      if (r.status === 401 && !refreshed) {
+        refreshed = true;
         if (this.token?.value === token) this.token = undefined;
         token = await this.auth();
         continue;
       }
+      // An explicit 429 rejects generation: unlike an ambiguous timeout/5xx,
+      // retrying it cannot publish or repeat an already accepted model result.
+      if (r.status === 429 && quotaRetries < 2) {
+        const delay = [500, 1500][quotaRetries++];
+        if (this.remaining(deadline) > delay) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+      }
       this.checkStatus(r.status);
       return r.body;
     }
-    throw new AiError('authorization');
+  }
+  private async modelIds(): Promise<string[]> {
+    if (this.catalog && this.catalog.expires > Date.now()) return this.catalog.ids;
+    if (this.discovering) return this.discovering;
+    this.discovering = (async () => {
+      const r = modelsSchema.safeParse(await this.api('models'));
+      if (!r.success) throw new AiError('invalid_response', 'MODEL_ENVELOPE');
+      const ids = r.data.data.map((m) => m.id);
+      this.catalog = { ids, expires: Date.now() + 300000 };
+      return ids;
+    })();
+    try {
+      return await this.discovering;
+    } finally {
+      this.discovering = undefined;
+    }
   }
   async model(requested?: string) {
-    const r = modelsSchema.safeParse(await this.api('models'));
-    if (!r.success) throw new AiError('invalid_response', 'MODEL_ENVELOPE');
-    const ids = r.data.data.map((m) => m.id);
+    const ids = await this.modelIds();
     const selected =
       requested || this.config.model || ['GigaChat-2', 'GigaChat'].find((m) => ids.includes(m));
     if (!selected || !ids.includes(selected)) throw new AiError('model_unavailable');
@@ -260,22 +293,27 @@ export class GigaClient {
     data: unknown,
     schema: unknown,
     retryEmpty = true,
+    deadline = Date.now() + this.config.timeout,
   ): Promise<{
     result: unknown;
     usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
     model: string;
   }> {
-    const body = await this.api('chat/completions', {
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: JSON.stringify(data) },
-      ],
-      temperature: 0.0001,
-      max_tokens: 1800,
-      stream: false,
-      response_format: { type: 'json_schema', schema, strict: true },
-    });
+    const body = await this.api(
+      'chat/completions',
+      {
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: JSON.stringify(data) },
+        ],
+        temperature: 0.0001,
+        max_tokens: 1800,
+        stream: false,
+        response_format: { type: 'json_schema', schema, strict: true },
+      },
+      deadline,
+    );
     const r = chatSchema.safeParse(body);
     if (!r.success) throw new AiError('invalid_response', 'CHAT_ENVELOPE');
     if (r.data.choices[0].finish_reason && r.data.choices[0].finish_reason !== 'stop')
@@ -285,7 +323,7 @@ export class GigaClient {
       );
     const content = r.data.choices[0].message.content;
     if (!content.trim()) {
-      if (retryEmpty) return this.generate(model, system, data, schema, false);
+      if (retryEmpty) return this.generate(model, system, data, schema, false, deadline);
       throw new AiError('empty_generation', 'CONTENT_EMPTY');
     }
     let result: unknown;

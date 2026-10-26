@@ -169,7 +169,7 @@ describe('GigaChat safety and transport', () => {
           ),
         ),
       ).rejects.toBeInstanceOf(AiError);
-      expect(chats).toBe(1);
+      expect(chats).toBe(failure === 429 ? 2 : 1);
     }
   });
 });

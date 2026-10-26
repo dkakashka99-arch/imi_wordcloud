@@ -22,10 +22,18 @@ Updated 26 October 2026, Europe/Samara. Task: uploaded IMI WordCloud acceptance/
 
 Local validation: lint, typecheck, 38 unit tests, production build passed. Isolated PostgreSQL-WASM integration: 35 passed, one native-concurrency test skipped; HTTP flow passed (including restart, idempotency, Origin and QR). Native PostgreSQL/browser results must come from CI; do not substitute these local checks for production acceptance.
 
+## Installed diagnostic release and root cause
+
+PR #26 merged as `9aa31be6ab43994fd7e6500396522a9a160cadd0`.
+Main CI [40321115415](https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/40321115415) and Infrastructure [40321115639](https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/40321115639) passed.
+Production [40321782485](https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/40321782485): backup (including restore) and deploy passed; installed SHA and image verified; acceptance failed.
+
+Word-form and translation POSTs passed this time. A later transliteration POST failed with provider `quota` on `choose-model`, 60ms, request `12e9d5a7-659e-4bbf-921c-2d36e821614e`. See `GIGACHAT_503_ROOT_CAUSE.md`. This establishes a rate-limited discovery failure, not an invalid semantic decision. Historical failures have no retained exception cause.
+
+Synthetic event cleanup and protected digest verification ran in finally; neither reported failure. The real event was not reset or changed by acceptance. Direct SSH remains unavailable; server work uses existing pinned workflow.
+
 ## First unfinished action
 
-Finish PR #26 CI/Infrastructure on its final head, review and merge through normal workflow. Obtain a real failing POST trace on installed diagnostic SHA, read its safe provider code/stage, then choose the smallest evidence-based fix. Do not claim the 503 fixed before final production acceptance.
+Validate and publish the model-catalog cache/single-flight and bounded 429 retry correction in a separate PR. Re-run direct 25-case regression and real HTTP acceptance on installed SHA. Finish the full 60-minute 250-participant test before declaring P0 ready. Then implement Live Cloud independently behind an off-by-default flag.
 
-P0: **NOT READY**. Live Cloud: **NOT DONE**. Do not start unrelated UI changes before P0 evidence.
-
-Production data was not directly modified in this session. Only isolated local fixtures have been created/cleaned so far. No production synthetic test has been launched from this workspace. Physical RF networks, phone QR and actual projector remain unverified.
+P0: **NOT READY**. Live Cloud: **NOT DONE**. Physical RF networks, phone QR and actual projector remain unverified.
