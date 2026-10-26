@@ -17,7 +17,7 @@ verdict: unsafe — мат (включая маскировку и другие 
 canonical: исправь очевидную орфографию, опечатки, словоформы, транслитерацию; переведи на русский, сохраняя смысл и собственные названия. Если есть семантически эквивалентный кандидат, дословно используй его canonical. Синонимы объединяй. Сохраняй отрицания, степень и оценку. Не объединяй разные понятия только по теме или корню.
 family: краткое русское название общей смысловой темы. Для близких, но не синонимичных понятий используй ОДНО family и РАЗНЫЕ canonical. Переиспользуй подходящее family из кандидатов. Например доход и высокая зарплата могут иметь общее семейство, сохраняя разные значения. Правила применяй к любым вопросам и словам, а не только к примерам.
 Верни только JSON по схеме; для отклонённых ответов canonical и family всё равно заполни краткими нейтральными значениями.`;
-export async function analyzeAnswer(
+async function analyzeAnswerImpl(
   question: string,
   text: string,
   candidates: { canonical: string; family: string }[],
@@ -49,4 +49,29 @@ export function admissionMessage(verdict: Analysis['verdict']) {
     : verdict === 'irrelevant'
       ? 'Напишите ответ по теме вопроса.'
       : 'Этот ответ не подходит для публичного экрана. Пожалуйста, переформулируйте.';
+}
+
+// Share only in-flight checks of identical input; failed calls never become cached verdicts.
+const pending = new WeakMap<object, Map<string, Promise<Analysis>>>();
+export async function analyzeAnswer(
+  question: string,
+  text: string,
+  candidates: { canonical: string; family: string }[],
+  ai: Pick<GigaClient, 'model' | 'generate'> = gigaClient(),
+): Promise<Analysis> {
+  let calls = pending.get(ai);
+  if (!calls) {
+    calls = new Map();
+    pending.set(ai, calls);
+  }
+  const key = JSON.stringify([question, normalizeWord(text), candidates]);
+  const previous = calls.get(key);
+  if (previous) return previous;
+  const result = analyzeAnswerImpl(question, text, candidates, ai);
+  calls.set(key, result);
+  try {
+    return await result;
+  } finally {
+    calls.delete(key);
+  }
 }
