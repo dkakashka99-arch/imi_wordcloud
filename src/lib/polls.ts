@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { diagnosticStage, logAdmissionFailure } from './diagnostics';
 import { analyzeAnswer, admissionMessage, type Analysis } from './semantic/admission';
 import { database } from '@/db/client';
 import { normalizeWord } from './normalize';
@@ -111,9 +112,11 @@ export async function submit(
           [input.questionId, preQuestion.title, preQuestion.semantic_revision],
         )
       ).rows;
+      const started = Date.now();
       try {
         analysis = await analyzeAnswer(preQuestion.title, input.text, candidates);
-      } catch {
+      } catch (error) {
+        logAdmissionFailure(error, Date.now() - started, candidates.length);
         throw new HttpError(503, 'Не удалось проверить ответ. Попробуйте отправить ещё раз.');
       }
     }
@@ -122,6 +125,7 @@ export async function submit(
   } else if (!replay && process.env.NODE_ENV === 'production') {
     throw new HttpError(503, 'Проверка ответов временно недоступна. Попробуйте позже.');
   }
+  diagnosticStage('save');
   const client = await database().connect();
   try {
     await client.query('BEGIN');

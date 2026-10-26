@@ -161,6 +161,6 @@ try {
   );
   assert.equal(errors.length, 0, 'Acceptance evidence contains failures');
 } finally {
-  if (eventId) await removeTestEvent(db, eventId);
+  if (eventId) await removeTestEvent(db, eventId, slug);
   await db.end();
 }

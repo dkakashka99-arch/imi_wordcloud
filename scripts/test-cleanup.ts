@@ -1,9 +1,16 @@
 import type { Pool } from 'pg';
 // Remove only a test-owned event, children first; never run against real events.
-export async function removeTestEvent(db: Pool, id: string) {
+export async function removeTestEvent(db: Pool, id: string, expectedSlug?: string) {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    if (expectedSlug) {
+      const owned = await client.query(
+        'SELECT 1 FROM events WHERE id=$1 AND slug=$2 AND rehearsal FOR UPDATE',
+        [id, expectedSlug],
+      );
+      if (owned.rowCount !== 1) throw new Error('Synthetic ownership check failed');
+    }
     await client.query(
       'DELETE FROM submission_requests WHERE question_id IN (SELECT id FROM questions WHERE event_id=$1)',
       [id],

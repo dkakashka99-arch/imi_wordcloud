@@ -154,11 +154,21 @@ jobs:
           echo 'ACCEPTANCE_CHAIN_COMPLETED'
           REMOTE
           node scripts/check-acceptance-evidence.mjs acceptance-results.txt
+      - name: Collect payload-free admission failure diagnostics
+        if: failure()
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '212.109.196.228' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          set -o pipefail
+          ssh -i "$RUNNER_TEMP/acceptance-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/acceptance-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" 'docker logs --since 30m --tail 2000 imi-wordcloud-app-1 2>&1' | python3 ops/filter-admission-log.py | tee admission-diagnostics.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: production-acceptance-evidence
-          path: acceptance-results.txt
+          path: |
+            acceptance-results.txt
+            admission-diagnostics.txt
           retention-days: 14
       - name: Remove acceptance SSH key
         if: always()
