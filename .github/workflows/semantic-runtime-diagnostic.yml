@@ -1,4 +1,4 @@
-name: Stop superseded test soak without touching app or database
+name: Recover retained mappings with worker isolation
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: 0bedcb04527d2a1eba7f8aaa99d8e2b8990c59ce
+          ref: dfb18f664f89c743238a8f3aa1696227c4fca877
       - name: Diagnose runtime without secrets or participant originals
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -26,18 +26,18 @@ jobs:
           set -eu
           root=/opt/imi-wordcloud
           export RELEASE=$(cat "$root/shared/current-release")
-          test "$RELEASE" = 0bedcb04527d2a1eba7f8aaa99d8e2b8990c59ce
+          test "$RELEASE" = dfb18f664f89c743238a8f3aa1696227c4fca877
           cd "$root/releases/$RELEASE"
-          stopped=0
-          for id in $(docker ps -q --filter label=com.docker.compose.project=imi-wordcloud --filter label=com.docker.compose.service=tools); do
-            image=$(docker inspect --format '{{.Config.Image}}' "$id")
-            command=$(docker inspect --format '{{json .Config.Cmd}}' "$id")
-            if test "$image" = "imi-wordcloud-tools:$RELEASE" && test "$command" = '["node","--import","tsx","scripts/soak-production.ts"]'; then
-              docker stop --time 10 "$id" >/dev/null
-              stopped=$((stopped+1))
-            fi
-          done
-          echo "Superseded soak test containers stopped: $stopped; app and database untouched"
+          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/semantic-recovery-pr19-cohort.json:/run/cohort.json:ro tools node --input-type=module <<'JS'
+          import {Pool} from 'pg';import {readFileSync} from 'node:fs';import assert from 'node:assert/strict';
+          const before=JSON.parse(readFileSync('/run/cohort.json','utf8'));const keys=before.cohort.filter(c=>!c.protected).map(c=>c.key);const db=new Pool({connectionString:process.env.DATABASE_URL,max:2});
+          const retried=await db.query("WITH isolated AS (SELECT sq.question_id,sq.source,1 n FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE sq.status='review' AND sq.error='invalid_mapping' AND e.slug!='mir-27-oct' AND md5(sq.question_id::text||':'||sq.source)=ANY($1::text[])) UPDATE semantic_queue sq SET status='pending',attempts=0,available_at=now(),error='invalid_mapping',error_detail='SINGLE_CHOICE_RETRY_EPOCH' FROM isolated WHERE sq.question_id=isolated.question_id AND sq.source=isolated.source RETURNING sq.question_id",[keys]);
+          assert.equal(retried.rowCount,2,'Expected exactly the two retained conflicts');console.log(JSON.stringify({event:'isolated_recovery_start',count:retried.rowCount,mode:'worker_enforced_single_source'}));
+          let rows=[];for(let attempt=0;attempt<180;attempt++){rows=(await db.query("SELECT sq.status,sq.error,sq.error_detail,sq.attempts,count(*)::int n FROM semantic_queue sq WHERE md5(sq.question_id::text||':'||sq.source)=ANY($1::text[]) GROUP BY 1,2,3,4",[keys])).rows;if(!rows.some(r=>r.status==='pending'))break;await new Promise(r=>setTimeout(r,2000));}
+          const originals=(await db.query("SELECT count(*)::int n,md5(coalesce(string_agg(id::text||original_text||canonical_key,'|' ORDER BY id),'')) checksum FROM submissions WHERE created_at<=$1",[before.cutoff])).rows[0];
+          const aliases=(await db.query("SELECT md5(coalesce(string_agg(wa.question_id::text||wa.source||wa.target,'|' ORDER BY wa.question_id,wa.source),'')) checksum FROM word_aliases wa JOIN questions q ON q.id=wa.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct'")).rows[0].checksum;
+          console.log(JSON.stringify({event:'isolated_recovery_complete',rows,originalsUnchanged:JSON.stringify(originals)===JSON.stringify(before.originals),protectedAliasesUnchanged:aliases===before.protectedAliases}));assert.deepEqual(originals,before.originals);assert.equal(aliases,before.protectedAliases);assert(!rows.some(r=>r.status==='pending'));assert(!rows.some(r=>r.error==='invalid_mapping'),'Retained invalid mapping remains unresolved');await db.end();
+          JS
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
