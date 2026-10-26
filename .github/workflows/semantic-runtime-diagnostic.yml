@@ -31,14 +31,8 @@ jobs:
           compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
           "${compose[@]}" logs --tail=80 app
           "${compose[@]}" exec -T app node --input-type=module -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:!!process.env.GIGACHAT_AUTH_KEY,keyFile:!!process.env.GIGACHAT_AUTH_KEY_FILE,caPresent:!!process.env.GIGACHAT_CA_BUNDLE}))' </dev/null
-          "${compose[@]}" run --rm -T tools node --input-type=module <<'JS'
-          import {Pool} from 'pg';import {randomUUID,randomBytes} from 'node:crypto';
-          const db=new Pool({connectionString:process.env.DATABASE_URL,max:1});
-          const slug='admission-probe-'+randomUUID();const e=(await db.query("INSERT INTO events(slug,title,rehearsal) VALUES($1,'Isolated admission probe',true) RETURNING id",[slug])).rows[0].id;const a=(await db.query("INSERT INTO audiences(event_id,key,label) VALUES($1,'student','Test') RETURNING id",[e])).rows[0].id;const q=(await db.query("INSERT INTO questions(event_id,title,status) VALUES($1,'Что вы ожидаете от будущей работы?','open') RETURNING id",[e])).rows[0];q.slug=slug;await db.query("INSERT INTO question_audiences(event_id,question_id,audience_id,active) VALUES($1,$2,$3,true)",[e,q.id,a]);
-          for (const text of ['salary','зарплата','высокая зарплата','хорошый колектив','good team','зарплата, коллектив','секс']) {const start=Date.now();const response=await fetch(process.env.APP_ORIGIN+'/api/public/events/'+q.slug+'/student/submissions',{method:'POST',headers:{Origin:process.env.APP_ORIGIN,'Content-Type':'application/json',Cookie:'mir_participant='+randomBytes(32).toString('hex')},body:JSON.stringify({questionId:q.id,text,idempotencyKey:randomUUID()}),signal:AbortSignal.timeout(65000)});console.log(JSON.stringify({probe:text,status:response.status,ms:Date.now()-start,body:await response.text()}));}
-          const screen=await (await fetch(process.env.APP_ORIGIN+'/api/public/events/'+slug+'/screen')).json();console.log(JSON.stringify({cloud:screen.audiences[0].words,answers:screen.audiences[0].answerCount}));
-          await db.query("DELETE FROM events WHERE id=$1",[e]);await db.query("DELETE FROM events WHERE rehearsal AND (slug LIKE 'semantic-acceptance-%' OR slug LIKE 'acceptance-%')");console.log(JSON.stringify({events:(await db.query("SELECT slug,title,(SELECT count(*)::int FROM submissions WHERE event_id=e.id) answers FROM events e")).rows}));await db.end();
-          JS
+          "${compose[@]}" run --rm -T tools node --import tsx scripts/prepare-event.ts --keep mir-27-oct --apply </dev/null
+
           "${compose[@]}" logs --tail=50 app
           REMOTE
       - if: always()
