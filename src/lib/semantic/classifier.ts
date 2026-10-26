@@ -24,7 +24,7 @@ export function semanticContract(sources: string[], candidates: string[]) {
             .strict(),
         )
         .min(1)
-        .max(12),
+        .max(sources.length === 1 ? 1 : 12),
     })
     .strict();
   return {
@@ -119,7 +119,10 @@ export async function classify(
   const contract = semanticContract(sources, candidates);
   const generated = await ai.generate(
     model,
-    semanticPrompt,
+    semanticPrompt +
+      (sources.length === 1
+        ? ' Для единственного source верни ровно одно решение: первый по порядку эквивалентный target, иначе none.'
+        : ''),
     { question, sources: contract.sources, candidates: contract.candidates },
     contract.schema,
   );

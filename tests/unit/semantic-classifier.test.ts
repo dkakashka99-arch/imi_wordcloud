@@ -197,3 +197,18 @@ it('represents a negative decision without inventing a none category', () => {
     c.decode({ matches: [{ source: 'invented', target: 'none', relation: 'synonym' }] }).matches,
   ).toEqual([]);
 });
+it('prevents multi-target output for an isolated source while still rejecting provider conflicts', () => {
+  const c = semanticContract(['навигацич'], ['навигация', 'навигационная система']);
+  const malformed = c.decode({
+    matches: c.candidates.map((t) => ({
+      source: c.sources[0].id,
+      target: t.id,
+      relation: 'spelling',
+    })),
+  });
+  expect(malformed.matches).toEqual([]);
+  expect(malformed.affected).toEqual(['навигацич']);
+  expect(malformed.rejected).toEqual({ CONFLICTING_SOURCE: 1 });
+  // The strict provider contract must exclude the exact production failure above.
+  expect(c.schema.properties?.matches).toMatchObject({ minItems: 1, maxItems: 1 });
+});
