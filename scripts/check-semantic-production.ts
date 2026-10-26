@@ -137,6 +137,12 @@ try {
       signal: AbortSignal.timeout(15000),
     });
   assert.equal((await outagePost('тест недоступности')).status, 200);
+  // Exercise only the background worker outage, independently of successful admission.
+  await db.query('DELETE FROM semantic_queue WHERE question_id=$1', [outageQ]);
+  await db.query(
+    "INSERT INTO semantic_queue(question_id,source) VALUES($1,'проверка сбоя фонового сервиса')",
+    [outageQ],
+  );
   for (let attempt = 0; attempt < 20; attempt++) {
     await db.query(
       "UPDATE semantic_queue SET status='pending',available_at=now() WHERE question_id=$1",
