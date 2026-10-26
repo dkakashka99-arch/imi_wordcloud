@@ -306,3 +306,96 @@ it('clears obsolete parse diagnostics after a successful negative classification
     ).rows[0],
   ).toEqual({ status: 'review', error: 'no_equivalent', error_detail: null });
 });
+it('isolates chain failures on retry and preserves canonical votes without duplicate aliases', async () => {
+  const f = await fixture();
+  const originals = ['навигация', 'навигацич', 'навегацыя'];
+  for (const word of originals) await f.send(word);
+  let retry = false;
+  const seen: string[][] = [];
+  const ai = {
+    model: async () => 'fixture',
+    generate: async (_model: string, _prompt: string, input: unknown) => {
+      const data = input as {
+        sources?: { id: string; text: string }[];
+        candidates?: { id: string; text: string }[];
+        pairs?: { id: string }[];
+      };
+      if (data.pairs)
+        return {
+          model: 'fixture',
+          usage: null,
+          result: {
+            decisions: data.pairs.map((p) => ({
+              id: p.id,
+              reason: 'Одна функция навигации',
+              equivalent: true,
+            })),
+          },
+        };
+      const sources = data.sources!;
+      if (!retry && sources.length === 1)
+        return {
+          model: 'fixture',
+          usage: null,
+          result: { matches: [{ source: sources[0].id, target: 'none', relation: 'synonym' }] },
+        };
+      if (retry) seen.push(sources.map((s) => s.text));
+      const edge = (source: string, target: string) => ({
+        source: sources.find((s) => s.text === source)!.id,
+        target: data.candidates!.find((t) => t.text === target)!.id,
+        relation: 'spelling',
+      });
+      return {
+        model: 'fixture',
+        usage: null,
+        result: {
+          matches: retry
+            ? [edge(sources[0].text, 'навигация')]
+            : [edge('навегацыя', 'навигацич'), edge('навигацич', 'навигация')],
+        },
+      };
+    },
+  };
+  await semanticTick(ai, f.q);
+  expect(
+    (
+      await database().query(
+        "SELECT count(*)::int n FROM semantic_queue WHERE question_id=$1 AND error='invalid_mapping'",
+        [f.q],
+      )
+    ).rows[0].n,
+  ).toBe(2);
+  retry = true;
+  for (let i = 0; i < 2; i++) {
+    await database().query(
+      "UPDATE semantic_queue SET available_at=now() WHERE question_id=$1 AND status='pending'",
+      [f.q],
+    );
+    await semanticTick(ai, f.q);
+  }
+  expect(seen).toHaveLength(2);
+  expect(seen.every((s) => s.length === 1)).toBe(true);
+  expect((await screenState(f.slug)).audiences[0].words).toEqual([{ text: 'навигация', count: 3 }]);
+  expect(
+    (
+      await database().query(
+        'SELECT original_text FROM submissions WHERE question_id=$1 ORDER BY created_at',
+        [f.q],
+      )
+    ).rows.map((r) => r.original_text),
+  ).toEqual(originals);
+  await semanticTick(ai, f.q);
+  expect(
+    (await database().query('SELECT source,target FROM word_aliases WHERE question_id=$1', [f.q]))
+      .rows,
+  ).toEqual(
+    expect.arrayContaining([
+      { source: 'навигацич', target: 'навигация' },
+      { source: 'навегацыя', target: 'навигация' },
+    ]),
+  );
+  expect(
+    (await database().query('SELECT count(*)::int n FROM word_aliases WHERE question_id=$1', [f.q]))
+      .rows[0].n,
+  ).toBe(2);
+});

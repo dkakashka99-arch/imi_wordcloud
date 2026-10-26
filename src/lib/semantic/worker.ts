@@ -58,11 +58,20 @@ export async function semanticTick(
     const question = first.rows[0];
     questionId = question.question_id;
     const batch = await c.query(
-      `SELECT source FROM semantic_queue WHERE question_id=$1 AND status='pending' AND available_at<=now() ORDER BY available_at LIMIT 12`,
+      `SELECT source,error FROM semantic_queue WHERE question_id=$1 AND status='pending' AND available_at<=now() ORDER BY available_at LIMIT 12`,
       [questionId],
     );
-    sources = batch.rows.map((r) => r.source).filter((s) => !sensitive(s));
-    const excluded = batch.rows.map((r) => r.source).filter((s) => sensitive(s));
+    // Retry model-result failures independently: rebatching the same sources can
+    // reproduce the same ambiguous chains until the retry budget is exhausted.
+    // Provider outages retain normal batching and their separate retry budget.
+    const isolated = batch.rows.find((r) =>
+      ['invalid_mapping', 'invalid_response', 'empty_generation', 'safety_or_incomplete'].includes(
+        r.error,
+      ),
+    );
+    const selected = isolated ? [isolated] : batch.rows;
+    sources = selected.map((r) => r.source).filter((s) => !sensitive(s));
+    const excluded = selected.map((r) => r.source).filter((s) => sensitive(s));
     if (excluded.length)
       await c.query(
         "UPDATE semantic_queue SET status='review',error='sensitive_input' WHERE question_id=$1 AND source=ANY($2::text[])",
