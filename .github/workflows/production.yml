@@ -1,0 +1,176 @@
+name: Production
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: production
+  cancel-in-progress: false
+jobs:
+  backup:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.PRODUCTION_ENABLED != 'false'
+    uses: ./.github/workflows/backup.yml
+    secrets: inherit
+  deploy:
+    needs: backup
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.PRODUCTION_ENABLED != 'false'
+    # Default is GitHub-hosted SSH. Optional dedicated runner must never run PR jobs.
+    runs-on: ${{ vars.DEPLOY_RUNNER || 'ubuntu-24.04' }}
+    environment: production
+    timeout-minutes: 60
+    env:
+      BUILD_ON_VPS: ${{ vars.DEPLOY_BUILD_ON_VPS != 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Reject stale main release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test "$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/main --jq .object.sha)" = "$RELEASE"
+      - name: Require both production checks on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$RELEASE&event=push&per_page=100")
+            if printf '%s' "$runs" | jq -e '[.workflow_runs[] | select((.name == "CI" or .name == "Infrastructure") and .conclusion == "success")] | unique_by(.name) | length == 2' >/dev/null; then exit 0; fi
+            sleep 10
+          done
+          echo 'Both CI and Infrastructure must pass on the release commit'; exit 1
+      - name: Build immutable images
+        env:
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if test "$BUILD_ON_VPS" = true; then
+            git archive --format=tar "$RELEASE" | gzip > source.tar.gz
+            sha256sum source.tar.gz > SHA256SUMS
+          else
+            docker build --target runtime -t imi-wordcloud:$RELEASE .
+            docker build --target tools -t imi-wordcloud-tools:$RELEASE .
+            docker save imi-wordcloud:$RELEASE imi-wordcloud-tools:$RELEASE | gzip > images.tar.gz
+            tar -czf release.tar.gz compose.production.yaml ops
+            sha256sum images.tar.gz release.tar.gz > SHA256SUMS
+          fi
+      - name: Configure pinned SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS || '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/imi-ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/imi-ssh/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/imi-ssh/known_hosts"
+      - name: Upload and deploy
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '212.109.196.228' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          BACKUP_URL: ${{ needs.backup.outputs.artifact_url }}
+        run: |
+          test "$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/main --jq .object.sha)" = "$RELEASE"
+          [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]]
+          SSH_OPTS=(-i "$RUNNER_TEMP/imi-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/imi-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=6)
+          available_kb=$(ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "df -Pk /opt/imi-wordcloud" | awk 'NR==2 {print $4}')
+          test "$available_kb" -ge 8388608
+          ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "mkdir -p /opt/imi-wordcloud/incoming/$RELEASE /opt/imi-wordcloud/releases/$RELEASE"
+          if test -n "$BACKUP_URL"; then
+            [[ "$BACKUP_URL" =~ ^https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/[0-9]+/artifacts/[0-9]+$ ]]
+            printf '%s\n' "$BACKUP_URL" > "$RUNNER_TEMP/imi-ssh/backup-proof"
+            scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" "$RUNNER_TEMP/imi-ssh/backup-proof" "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/shared/offsite-backup-$RELEASE"
+          fi
+          if test "$BUILD_ON_VPS" = true; then
+            scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" source.tar.gz SHA256SUMS "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/incoming/$RELEASE/"
+            ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; tar -xzf source.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; cd /opt/imi-wordcloud/releases/$RELEASE; docker build --target runtime -t imi-wordcloud:$RELEASE .; docker build --target tools -t imi-wordcloud-tools:$RELEASE .; bash ops/deploy.sh $RELEASE; rm /opt/imi-wordcloud/incoming/$RELEASE/source.tar.gz /opt/imi-wordcloud/incoming/$RELEASE/SHA256SUMS"
+          else
+            scp "${SSH_OPTS[@]}" -P "$DEPLOY_PORT" images.tar.gz release.tar.gz SHA256SUMS "deploy@$DEPLOY_HOST:/opt/imi-wordcloud/incoming/$RELEASE/"
+            ssh "${SSH_OPTS[@]}" -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "set -eu; cd /opt/imi-wordcloud/incoming/$RELEASE; sha256sum -c SHA256SUMS; gunzip -c images.tar.gz | docker load; tar -xzf release.tar.gz -C /opt/imi-wordcloud/releases/$RELEASE; bash /opt/imi-wordcloud/releases/$RELEASE/ops/deploy.sh $RELEASE; rm images.tar.gz release.tar.gz SHA256SUMS"
+          fi
+      - name: Public HTTPS smoke
+        run: |
+          curl --fail --show-error --silent --retry 4 --retry-delay 5 --max-time 15 https://imi-cloudpoll.ru/api/ready
+      - name: Roll back on failed public smoke
+        if: failure()
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '212.109.196.228' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # Only roll back if this run actually promoted the current release.
+          ssh -i "$RUNNER_TEMP/imi-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/imi-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "test \"\$(cat /opt/imi-wordcloud/shared/current-release)\" != '$RELEASE' || bash /opt/imi-wordcloud/current/ops/rollback.sh"
+      - name: Remove SSH key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/imi-ssh/key" "$RUNNER_TEMP/imi-ssh/known_hosts"
+  acceptance:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Configure pinned acceptance SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS || '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/acceptance-ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/acceptance-ssh/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/acceptance-ssh/known_hosts"
+      - name: Verify deployed SHA, live asynchronous GigaChat and 60-minute 250-participant acceptance
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '212.109.196.228' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          RELEASE: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -o pipefail
+          [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]]
+          ssh -i "$RUNNER_TEMP/acceptance-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/acceptance-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=6 -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" "bash -s -- $RELEASE" <<'REMOTE' | tee acceptance-results.txt
+          set -Eeuo pipefail
+          release=$1
+          root=/opt/imi-wordcloud
+          test "$(cat "$root/shared/current-release")" = "$release"
+          cd "$root/releases/$release"
+          export RELEASE=$release
+          compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
+          app=$("${compose[@]}" ps -q app)
+          docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
+          "${compose[@]}" run --rm -T tools node --import tsx scripts/check-admission-live.ts --live </dev/null
+          "${compose[@]}" run --rm -T -e PRODUCTION_ACCEPTANCE=true tools node --import tsx scripts/check-semantic-production.ts </dev/null
+          "${compose[@]}" run --rm -T -e PRODUCTION_ACCEPTANCE=true tools node --import tsx scripts/soak-production.ts </dev/null
+          test "$(cat "$root/shared/current-release")" = "$release"
+          docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
+          docker stats --no-stream --format 'container={{.Name}} memory={{.MemUsage}} cpu={{.CPUPerc}}' "$app"
+          echo 'ACCEPTANCE_CHAIN_COMPLETED'
+          REMOTE
+          node scripts/check-acceptance-evidence.mjs acceptance-results.txt
+      - name: Collect payload-free admission failure diagnostics
+        if: failure()
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '212.109.196.228' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          set -o pipefail
+          ssh -i "$RUNNER_TEMP/acceptance-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/acceptance-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" 'docker logs --since 30m --tail 2000 imi-wordcloud-app-1 2>&1' | python3 ops/filter-admission-log.py | tee admission-diagnostics.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-acceptance-evidence
+          path: |
+            acceptance-results.txt
+            admission-diagnostics.txt
+          retention-days: 14
+      - name: Remove acceptance SSH key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/acceptance-ssh/key" "$RUNNER_TEMP/acceptance-ssh/known_hosts"

@@ -1,0 +1,36 @@
+name: VPS connectivity
+on:
+  push:
+    branches: [feature/05-production-infrastructure]
+    paths: [.github/workflows/vps-connectivity.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: DNS evidence from recursive and authoritative resolvers
+        run: |
+          for resolver in 1.1.1.1 8.8.8.8 ns1.firstvds.ru ns2.firstvds.ru; do
+            for record in "imi-cloudpoll.ru A" "imi-cloudpoll.ru NS" "imi-cloudpoll.ru AAAA" "www.imi-cloudpoll.ru A" "www.imi-cloudpoll.ru CNAME"; do
+              echo "Resolver $resolver / $record"
+              dig @"$resolver" $record +time=3 +tries=1 +noall +answer +comments || true
+            done
+          done
+      - name: Check public ports without credentials
+        shell: python
+        run: |
+          import socket, urllib.request
+          for host, port in [('212.109.196.228',22),('imi-cloudpoll.ru',80),('imi-cloudpoll.ru',443)]:
+              try:
+                  print(f'{host} resolves to {socket.gethostbyname(host)}')
+                  with socket.create_connection((host,port),timeout=8) as s:
+                      print(f'{host}:{port} TCP reachable')
+                      if port == 22: print(s.recv(256).decode(errors='replace').strip())
+              except Exception as e: print(f'{host}:{port}: {type(e).__name__}: {e}')
+          try:
+              with urllib.request.urlopen('https://imi-cloudpoll.ru/api/ready',timeout=10) as response:
+                  print('HTTPS readiness:',response.status,response.read(512).decode())
+          except Exception as e: print('HTTPS readiness:',type(e).__name__,str(e))
