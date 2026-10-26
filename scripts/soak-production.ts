@@ -85,7 +85,7 @@ try {
   let classificationMs: number | undefined;
   for (let i = 0; i < 90; i++) {
     const history = await db.query(
-      "SELECT target,method FROM semantic_history WHERE question_id=$1 AND source=$2 AND method='gigachat-double-validation'",
+      "SELECT target,method FROM semantic_history WHERE question_id=$1 AND source=$2 AND method IN ('gigachat-double-validation','gigachat-admission')",
       [q, 'работа на дому'],
     );
     if (history.rows.some((r) => r.target === 'удаленная работа')) {
