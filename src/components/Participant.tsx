@@ -82,12 +82,16 @@ export function Participant({ slug, audience }: { slug: string; audience: string
         error?: string;
         remaining: number;
         duplicate: boolean;
-      }>(`${endpoint}/submissions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pending.current),
-        signal: sendingRequest.current.signal,
-      });
+      }>(
+        `${endpoint}/submissions`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pending.current),
+          signal: sendingRequest.current.signal,
+        },
+        70000,
+      );
       if (!response.ok) throw new Error(result.error || 'Не удалось отправить ответ.');
       mutationVersion.current++;
       setData((previous) =>
@@ -137,7 +141,7 @@ export function Participant({ slug, audience }: { slug: string; audience: string
                 required
               />
               <button className="button" disabled={sending || !text.trim() || !data?.remaining}>
-                {sending ? 'Отправляем…' : 'Отправить →'}
+                {sending ? 'Проверяем ответ…' : 'Отправить →'}
               </button>
             </form>
           </>
@@ -160,10 +164,6 @@ export function Participant({ slug, audience }: { slug: string; audience: string
             {error || networkError}
           </p>
         )}
-        <p className="footer">
-          Без регистрации и ФИО. Чтобы соблюдать лимит ответов, используем случайный идентификатор в
-          cookie этого браузера.
-        </p>
       </section>
     </main>
   );

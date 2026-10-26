@@ -863,3 +863,22 @@ section.card {
     transition: none;
   }
 }
+
+.home-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .shell > .top {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .home-navigation {
+    width: 100%;
+  }
+  .home-navigation .button {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+}

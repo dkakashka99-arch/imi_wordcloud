@@ -10,7 +10,7 @@ printf 'POSTGRES_PASSWORD=ci-only-password\n' > "$work/compose.env"
 cat > "$APP_ENV_FILE" <<'EOF'
 DATABASE_URL=postgresql://mir:ci-only-password@db:5432/mir_wordcloud
 APP_ORIGIN=https://imi-cloudpoll.ru
-GIGACHAT_ENABLED=false
+GIGACHAT_ENABLED=true
 EOF
 cat > "$work/override.yaml" <<'EOF'
 volumes:

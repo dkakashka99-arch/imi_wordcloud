@@ -29,7 +29,5 @@ export function rejectionReason(text: string): string | null {
   if (/(?:хуй|хуя|пизд|бляд|блять|ебат|ебан|сука)/u.test(compact))
     return 'Пожалуйста, ответьте без оскорблений и брани.';
   if (/(.)\1{6,}/u.test(normalized)) return 'Уберите повторяющиеся символы.';
-  if (/\s(?:и|или)\s|[\n]/iu.test(text))
-    return 'Напишите одну мысль за отправку. Например: «зарплата».';
   return null;
 }

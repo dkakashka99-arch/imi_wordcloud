@@ -17,3 +17,11 @@ Created eventmir-27-oct with requested independent student/employer questions, p
 
 Remaining owner tasks: Russian noVPNphysicalnetworks/phoneQR/projector, owncredentialretrieval, personalSSHrecovery and rootpasswordrotation (VMconsole unavailable so recovery notdisabled), GitHubbranch/environmentprotection settings (connector can'tadminister). No paidstorage/panels purchased.
 Next task: finish delivery of documentation PR to develop/main after requiredchecks; read current PR/run status first and do not duplicate deployed application or rerun load/AI/reboot without a new reason.
+
+# Active work — 26 October 2026: AI admission and cleanup
+
+Current task supersedes old instruction to preserve rehearsal events: user explicitly requested deletion of all except student/employer meeting and clearing retained answers. Implementation and local verification details, known limitations and first unfinished delivery step: `docs/ADMISSION_RELEASE.md`. Branch `feature/ai-admission-and-clean-ui` based on main `dfb18f6`. Changes are local; no deployment or live data cleanup occurred. Automatic approval review rejected git push as separately unauthorized publication; obtain explicit push permission before retrying. Do not work around rejection. GitHub connector also unavailable (`Unknown tool`). Preserve this work and continue release/live-AI/browser checks after access/permission is resolved; do not redo verified implementation.
+
+## Authorization update — 26 October 2026
+
+User explicitly authorized publishing: «разрешаю». Do not ask for publication permission again. Retried git push failed because no GitHub credential is available; connector reads also return Unknown tool despite plugin installed/enabled. Remote feature branch verified absent. Application commit 50a34ee remains local. First unfinished action: restore GitHub account access, push existing branch, open PR and continue release gates from ADMISSION_RELEASE.md. No live event mutation.

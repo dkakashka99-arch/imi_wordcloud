@@ -21,16 +21,17 @@ describe('automatic semantic safety', () => {
       expect(deterministicCategory(question, word)).toBeNull();
     expect(deterministicCategory('Какие слова вы знаете?', 'ЗП')).toBeNull();
   });
-  it('rejects injection, contacts, profanity obfuscation and multiple thoughts', () => {
-    for (const word of [
-      '<script>alert(1)</script>',
-      '79991234567',
-      'a@b.ru',
-      'х у й',
-      'зарплата и график',
-    ])
+  it('rejects injection, contacts, profanity obfuscation before semantic analysis', () => {
+    for (const word of ['<script>alert(1)</script>', '79991234567', 'a@b.ru', 'х у й'])
       expect(rejectionReason(word)).not.toBeNull();
-    for (const word of ['страхование', 'обучение', 'отпуск', 'дружный коллектив'])
+    for (const word of [
+      'страхование',
+      'обучение',
+      'отпуск',
+      'дружный коллектив',
+      'баланс работы и жизни',
+      'работа, которая нравится',
+    ])
       expect(rejectionReason(word)).toBeNull();
   });
   it('rejects hallucinations, duplicate sources and alias chains', () => {

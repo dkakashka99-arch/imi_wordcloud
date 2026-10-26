@@ -6,7 +6,14 @@ export default function Home() {
         <Link className="brand" href="/">
           <b>мир</b> облако слов
         </Link>
-        <span className="pill">Живой опрос</span>
+        <nav className="home-navigation" aria-label="Навигация">
+          <Link className="button quiet" href="/e/mir-27-oct/screen">
+            Экран мероприятия
+          </Link>
+          <Link className="button quiet" href="/admin">
+            Организаторам
+          </Link>
+        </nav>
       </header>
       <section className="hero">
         <p className="eyebrow">Колледж МИР · 27 октября 2026</p>
@@ -30,11 +37,6 @@ export default function Home() {
           </Link>
         </article>
       </section>
-      <footer className="footer">
-        Участие без регистрации · Короткие слова и фразы ·{' '}
-        <Link href="/e/mir-27-oct/screen">Экран мероприятия</Link> ·{' '}
-        <Link href="/admin">Организаторам</Link>
-      </footer>
     </main>
   );
 }

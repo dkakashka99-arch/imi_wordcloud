@@ -27,6 +27,21 @@ describe('deterministic word layout', () => {
       }
     }
   });
+  it('places members of a semantic family nearer each other than another family', () => {
+    const words = [
+      { text: 'зарплата', count: 4, family: 'доход' },
+      { text: 'коллектив', count: 3, family: 'люди' },
+      { text: 'высокий доход', count: 2, family: 'доход' },
+      { text: 'коллеги', count: 1, family: 'люди' },
+    ];
+    const placed = layoutWords(words);
+    expect(placed).toHaveLength(4);
+    const byText = new Map(placed.map((w) => [w.text, w]));
+    const distance = (a: string, b: string) =>
+      Math.hypot(byText.get(a)!.x - byText.get(b)!.x, byText.get(a)!.y - byText.get(b)!.y);
+    expect(distance('зарплата', 'высокий доход')).toBeLessThan(distance('зарплата', 'коллектив'));
+    expect(distance('коллектив', 'коллеги')).toBeLessThan(distance('коллектив', 'зарплата'));
+  });
   it('keeps all ten long answers even when the spiral has no free position', () => {
     const words = Array.from({ length: 10 }, (_, i) => ({
       text: `длинный ответ участника номер ${i}`,

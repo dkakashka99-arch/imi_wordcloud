@@ -250,7 +250,10 @@ export function EventEditor({ initial, origin }: { initial: AdminEvent; origin: 
         }
         throw new Error(data.error || 'Не удалось сохранить изменения.');
       }
-      if (command.action === 'duplicate') {
+      if (command.action === 'deleteEvent') {
+        router.replace('/admin');
+        router.refresh();
+      } else if (command.action === 'duplicate') {
         router.push(`/admin/events/${data.id}`);
         router.refresh();
       } else await refresh();
@@ -311,6 +314,34 @@ export function EventEditor({ initial, origin }: { initial: AdminEvent; origin: 
             }}
           >
             {event.archived ? 'Восстановить из архива' : 'Архивировать мероприятие'}
+          </button>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Очистить все ответы мероприятия «${event.title}»? Лимиты участников будут сброшены. Отменить это действие нельзя.`,
+                )
+              )
+                void run({ action: 'clearAnswers', confirmTitle: event.title });
+            }}
+          >
+            Очистить ответы
+          </button>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Удалить мероприятие «${event.title}» со всеми вопросами и ответами? Отменить это действие нельзя.`,
+                )
+              )
+                void run({ action: 'deleteEvent', confirmTitle: event.title });
+            }}
+          >
+            Удалить мероприятие
           </button>
         </div>
       </section>

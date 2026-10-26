@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { analyzeAnswer, admissionMessage, type Analysis } from './semantic/admission';
 import { database } from '@/db/client';
 import { normalizeWord } from './normalize';
 import { HttpError } from './http';
@@ -68,6 +69,59 @@ export async function submit(
   const rejection = rejectionReason(input.text);
   if (rejection) throw new HttpError(400, rejection);
   if (!/[\p{L}\p{N}]/u.test(key)) throw new HttpError(400, 'Напишите слово или короткую фразу.');
+  // Provider calls happen before any write locks. Recheck title/revision and quotas
+  // inside the transaction, so a concurrent clear/edit/delete cannot revive old work.
+  const preContext = await context(slug, audience);
+  const preQuestion = (
+    await database().query(
+      `SELECT q.title,q.semantic_revision,q.max_length,q.status,qa.active FROM questions q JOIN question_audiences qa ON qa.question_id=q.id WHERE q.id=$1 AND q.event_id=$2 AND qa.audience_id=$3`,
+      [input.questionId, preContext.event_id, preContext.audience_id],
+    )
+  ).rows[0];
+  const replay = (
+    await database().query(
+      'SELECT 1 FROM submission_requests sr JOIN participants p ON p.id=sr.participant_id WHERE sr.question_id=$1 AND p.event_id=$2 AND p.cookie_hash=$3 AND sr.idempotency_key=$4 AND sr.canonical_key=$5 AND sr.audience_id=$6',
+      [
+        input.questionId,
+        preContext.event_id,
+        hash,
+        input.idempotencyKey,
+        key,
+        preContext.audience_id,
+      ],
+    )
+  ).rowCount;
+  if (!preQuestion || (!replay && (!preQuestion.active || preQuestion.status !== 'open')))
+    throw new HttpError(409, 'Приём ответов приостановлен или вопрос изменился.');
+  if (!replay && Array.from(key).length > preQuestion.max_length)
+    throw new HttpError(400, `Не больше ${preQuestion.max_length} символов.`);
+  let analysis: Analysis | null = null;
+  if (!replay && process.env.GIGACHAT_ENABLED === 'true') {
+    const cached = (
+      await database().query(
+        'SELECT verdict,canonical,family FROM answer_analysis WHERE question_id=$1 AND source=$2 AND title=$3 AND semantic_revision=$4',
+        [input.questionId, key, preQuestion.title, preQuestion.semantic_revision],
+      )
+    ).rows[0];
+    if (cached) analysis = cached;
+    else {
+      const candidates = (
+        await database().query(
+          `SELECT DISTINCT COALESCE(wa.target,a.canonical) canonical,a.family FROM answer_analysis a LEFT JOIN word_aliases wa ON wa.question_id=a.question_id AND wa.source=a.source WHERE a.question_id=$1 AND a.verdict='allow' AND a.title=$2 AND a.semantic_revision=$3 ORDER BY canonical LIMIT 150`,
+          [input.questionId, preQuestion.title, preQuestion.semantic_revision],
+        )
+      ).rows;
+      try {
+        analysis = await analyzeAnswer(preQuestion.title, input.text, candidates);
+      } catch {
+        throw new HttpError(503, 'Не удалось проверить ответ. Попробуйте отправить ещё раз.');
+      }
+    }
+    if (analysis && analysis.verdict !== 'allow')
+      throw new HttpError(400, admissionMessage(analysis.verdict));
+  } else if (!replay && process.env.NODE_ENV === 'production') {
+    throw new HttpError(503, 'Проверка ответов временно недоступна. Попробуйте позже.');
+  }
   const client = await database().connect();
   try {
     await client.query('BEGIN');
@@ -78,7 +132,12 @@ export async function submit(
       [input.questionId, ctx.event_id, ctx.audience_id],
     );
     const q = qr.rows[0];
-    if (!q) throw new HttpError(409, 'Вопрос изменился. Обновите страницу.');
+    if (
+      !q ||
+      q.title !== preQuestion.title ||
+      q.semantic_revision !== preQuestion.semantic_revision
+    )
+      throw new HttpError(409, 'Вопрос изменился. Обновите страницу.');
     await client.query(
       `INSERT INTO participants(event_id,cookie_hash) VALUES($1,$2) ON CONFLICT(event_id,cookie_hash) DO NOTHING`,
       [ctx.event_id, hash],
@@ -121,7 +180,32 @@ export async function submit(
         );
         if (count.rows[0].n >= q.max_answers)
           throw new HttpError(409, 'Вы уже отправили максимальное число ответов.');
-        let category = deterministicCategory(q.title, key);
+        if (analysis) {
+          const saved = await client.query(
+            `INSERT INTO answer_analysis(question_id,source,title,semantic_revision,verdict,canonical,family) VALUES($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT(question_id,source) DO UPDATE SET title=EXCLUDED.title,semantic_revision=EXCLUDED.semantic_revision,verdict=EXCLUDED.verdict,canonical=EXCLUDED.canonical,family=EXCLUDED.family
+             WHERE answer_analysis.title<>EXCLUDED.title OR answer_analysis.semantic_revision<>EXCLUDED.semantic_revision RETURNING canonical,family`,
+            [
+              q.id,
+              key,
+              q.title,
+              q.semantic_revision,
+              analysis.verdict,
+              analysis.canonical,
+              analysis.family,
+            ],
+          );
+          if (!saved.rowCount) {
+            const prior = (
+              await client.query(
+                'SELECT canonical,family FROM answer_analysis WHERE question_id=$1 AND source=$2',
+                [q.id, key],
+              )
+            ).rows[0];
+            analysis = { ...analysis, ...prior };
+          }
+        }
+        let category = analysis?.canonical || deterministicCategory(q.title, key);
         if (category) {
           const target = await client.query(
             'SELECT target FROM word_aliases WHERE question_id=$1 AND source=$2',
@@ -151,7 +235,7 @@ export async function submit(
           );
           await client.query(
             'INSERT INTO semantic_history(question_id,source,target,method,version) VALUES($1,$2,$3,$4,$5)',
-            [q.id, key, category, 'dictionary', RULE_VERSION],
+            [q.id, key, category, analysis ? 'gigachat-admission' : 'dictionary', RULE_VERSION],
           );
           await client.query(
             'INSERT INTO semantic_history(question_id,source,target,method,version) SELECT question_id,source,$3,$4,$5 FROM word_aliases WHERE question_id=$1 AND target=$2',
@@ -165,6 +249,14 @@ export async function submit(
           await client.query(
             'INSERT INTO semantic_queue(question_id,source) VALUES($1,$2) ON CONFLICT DO NOTHING',
             [q.id, key],
+          );
+        }
+        if (analysis) {
+          // Reconcile independently reviewed answers too: simultaneous requests may
+          // both have seen an empty candidate snapshot before their provider call.
+          await client.query(
+            'INSERT INTO semantic_queue(question_id,source) VALUES($1,$2) ON CONFLICT DO NOTHING',
+            [q.id, category || key],
           );
         }
         await client.query(
@@ -235,7 +327,9 @@ export async function screenState(slug: string): Promise<ScreenState> {
       const q = await activeQuestion({ audience_id: a.id } as Context, client);
       const rows = q
         ? await client.query(
-            `SELECT COALESCE(wa.target,s.canonical_key) text,count(*)::int count FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 AND s.audience_id=$2 AND s.approved AND NOT EXISTS(SELECT 1 FROM stop_words sw WHERE sw.question_id=s.question_id AND sw.word IN(s.canonical_key,COALESCE(wa.target,s.canonical_key))) GROUP BY COALESCE(wa.target,s.canonical_key) ORDER BY count DESC,text LIMIT 80`,
+            `SELECT cloud.text,cloud.count,a.family FROM (
+              SELECT COALESCE(wa.target,s.canonical_key) text,count(*)::int count FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 AND s.audience_id=$2 AND s.approved AND NOT EXISTS(SELECT 1 FROM stop_words sw WHERE sw.question_id=s.question_id AND sw.word IN(s.canonical_key,COALESCE(wa.target,s.canonical_key))) GROUP BY COALESCE(wa.target,s.canonical_key) ORDER BY count DESC,text LIMIT 80
+            ) cloud LEFT JOIN LATERAL (SELECT min(family) family FROM answer_analysis WHERE question_id=$1 AND verdict='allow' AND (canonical=cloud.text OR source=cloud.text)) a ON true ORDER BY cloud.count DESC,cloud.text`,
             [q.id, a.id],
           )
         : null;
@@ -249,7 +343,9 @@ export async function screenState(slug: string): Promise<ScreenState> {
         key: a.key,
         label: a.label,
         question: q,
-        words: rows?.rows || [],
+        words: (rows?.rows || []).map(({ family, ...word }) =>
+          family ? { ...word, family } : word,
+        ),
         answerCount: totals?.rows[0]?.answers || 0,
         participantCount: totals?.rows[0]?.participants || 0,
         summary: q
