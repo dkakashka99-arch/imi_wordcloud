@@ -1,4 +1,4 @@
-name: Validate single-choice structured output on remaining cohort
+name: Stop superseded test soak without touching app or database
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -28,15 +28,16 @@ jobs:
           export RELEASE=$(cat "$root/shared/current-release")
           test "$RELEASE" = 0bedcb04527d2a1eba7f8aaa99d8e2b8990c59ce
           cd "$root/releases/$RELEASE"
-          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/semantic-recovery-pr19-cohort.json:/run/cohort.json:ro tools node --import tsx --input-type=module <<'JS'
-          import {Pool} from 'pg';import {readFileSync} from 'node:fs';import assert from 'node:assert/strict';
-          import {gigaClient,semanticModelPreference} from './src/lib/ai/client.ts';import {classify} from './src/lib/semantic/classifier.ts';
-          const before=JSON.parse(readFileSync('/run/cohort.json','utf8'));const keys=before.cohort.filter(c=>!c.protected).map(c=>c.key);const db=new Pool({connectionString:process.env.DATABASE_URL,max:2});
-          const pending=(await db.query("SELECT sq.question_id,sq.source,q.title FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id WHERE sq.error='invalid_mapping' AND sq.status='review' AND md5(sq.question_id::text||':'||sq.source)=ANY($1::text[])",[keys])).rows;
-          const real=gigaClient();const model=await real.model(semanticModelPreference());const ai={model:real.model.bind(real),generate:async(model,prompt,input,schema)=>{if(input.sources?.length===1){schema=structuredClone(schema);schema.properties.matches.maxItems=1;prompt+=' Для единственного source верни ровно одно решение: первый по порядку эквивалентный target, иначе none.';}return real.generate(model,prompt,input,schema);}};
-          const results=[];for(const row of pending){const candidates=(await db.query("SELECT COALESCE(wa.target,s.canonical_key) text,count(*) n FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 AND s.approved GROUP BY 1 ORDER BY n DESC,text LIMIT 150",[row.question_id])).rows.map(r=>r.text);const result=await classify(ai,model,row.title,[row.source],candidates);results.push({matches:result.matches.length,affected:result.affected.length,rejected:result.rejected});}
-          console.log(JSON.stringify({event:'single_choice_live_dry_run',model,count:results.length,results,applied:0}));assert.equal(results.length,2);assert(results.every(r=>r.affected===0));await db.end();
-          JS
+          stopped=0
+          for id in $(docker ps -q --filter label=com.docker.compose.project=imi-wordcloud --filter label=com.docker.compose.service=tools); do
+            image=$(docker inspect --format '{{.Config.Image}}' "$id")
+            command=$(docker inspect --format '{{json .Config.Cmd}}' "$id")
+            if test "$image" = "imi-wordcloud-tools:$RELEASE" && test "$command" = '["node","--import","tsx","scripts/soak-production.ts"]'; then
+              docker stop --time 10 "$id" >/dev/null
+              stopped=$((stopped+1))
+            fi
+          done
+          echo "Superseded soak test containers stopped: $stopped; app and database untouched"
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
