@@ -1,0 +1,34 @@
+name: Authorized 27 October event configuration
+on:
+  push:
+    branches: [ops/configure-event-27oct]
+    paths: [ops/configure-event-27oct.mjs, .github/workflows/configure-event-27oct.yml]
+permissions:
+  contents: read
+jobs:
+  backup:
+    uses: ./.github/workflows/backup.yml
+    secrets: inherit
+  configure:
+    needs: backup
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure verified SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/event-ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/event-ssh/key"
+          printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/event-ssh/known_hosts"
+      - name: Add authorized questions and audiences without deleting answers
+        run: |
+          ssh -i "$RUNNER_TEMP/event-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/event-ssh/known_hosts" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 deploy@212.109.196.228 'docker exec -i imi-wordcloud-app-1 node --input-type=module' < ops/configure-event-27oct.mjs
+      - name: Remove SSH files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/event-ssh/key" "$RUNNER_TEMP/event-ssh/known_hosts"
