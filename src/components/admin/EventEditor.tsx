@@ -20,7 +20,7 @@ function QuestionCard({
     [moderating, setModerating] = useState(false);
   const status = {
     draft: 'Черновик',
-    open: 'Приём ответов',
+    open: question.active ? 'Приём ответов открыт' : 'Не выбран для показа',
     paused: 'На паузе',
     closed: 'Завершён',
   }[question.status];
@@ -29,11 +29,16 @@ function QuestionCard({
       <div className="admin-section-title">
         <span className="pill">
           {status}
-          {question.active ? ' · выбран' : ''}
+          {question.active ? ' · показывается участникам' : ''}
         </span>
         <span>{question.answerCount} ответов</span>
       </div>
       <h3>{question.title}</h3>
+      <p>
+        {question.active
+          ? 'Это текущий вопрос хотя бы для одной из указанных аудиторий.'
+          : 'Чтобы показать этот вопрос участникам, нажмите «Запустить вопрос». Он заменит текущий вопрос выбранных аудиторий.'}
+      </p>
       <p>
         {event.audiences
           .filter((a) => question.audienceIds.includes(a.id))
