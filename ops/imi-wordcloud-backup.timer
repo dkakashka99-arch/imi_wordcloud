@@ -1,8 +1,0 @@
-[Unit]
-Description=Daily imi_wordcloud backup
-[Timer]
-OnCalendar=*-*-* 03:00:00 Europe/Samara
-RandomizedDelaySec=15m
-Persistent=true
-[Install]
-WantedBy=timers.target
