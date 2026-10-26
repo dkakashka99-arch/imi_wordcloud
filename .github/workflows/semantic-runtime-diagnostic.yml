@@ -1,4 +1,4 @@
-name: Recover retained mappings with worker isolation
+name: Diagnose remaining isolated mapping rejections
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -31,13 +31,13 @@ jobs:
           docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/semantic-recovery-pr19-cohort.json:/run/cohort.json:ro tools node --input-type=module <<'JS'
           import {Pool} from 'pg';import {readFileSync} from 'node:fs';import assert from 'node:assert/strict';
           const before=JSON.parse(readFileSync('/run/cohort.json','utf8'));const keys=before.cohort.filter(c=>!c.protected).map(c=>c.key);const db=new Pool({connectionString:process.env.DATABASE_URL,max:2});
-          const retried=await db.query("WITH isolated AS (SELECT sq.question_id,sq.source,1 n FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE sq.status='review' AND sq.error='invalid_mapping' AND e.slug!='mir-27-oct' AND md5(sq.question_id::text||':'||sq.source)=ANY($1::text[])) UPDATE semantic_queue sq SET status='pending',attempts=0,available_at=now(),error='invalid_mapping',error_detail='ISOLATED_RETRY_EPOCH_V2' FROM isolated WHERE sq.question_id=isolated.question_id AND sq.source=isolated.source RETURNING sq.question_id",[keys]);
-          console.log(JSON.stringify({event:'isolated_recovery_start',count:retried.rowCount,mode:'worker_enforced_single_source'}));
-          let rows=[];for(let attempt=0;attempt<180;attempt++){rows=(await db.query("SELECT sq.status,sq.error,sq.error_detail,sq.attempts,count(*)::int n FROM semantic_queue sq WHERE md5(sq.question_id::text||':'||sq.source)=ANY($1::text[]) GROUP BY 1,2,3,4",[keys])).rows;if(!rows.some(r=>r.status==='pending'))break;await new Promise(r=>setTimeout(r,2000));}
+          const rows=(await db.query("SELECT status,error,error_detail,attempts,count(*)::int n FROM semantic_queue WHERE md5(question_id::text||':'||source)=ANY($1::text[]) GROUP BY 1,2,3,4",[keys])).rows;
           const originals=(await db.query("SELECT count(*)::int n,md5(coalesce(string_agg(id::text||original_text||canonical_key,'|' ORDER BY id),'')) checksum FROM submissions WHERE created_at<=$1",[before.cutoff])).rows[0];
           const aliases=(await db.query("SELECT md5(coalesce(string_agg(wa.question_id::text||wa.source||wa.target,'|' ORDER BY wa.question_id,wa.source),'')) checksum FROM word_aliases wa JOIN questions q ON q.id=wa.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct'")).rows[0].checksum;
-          console.log(JSON.stringify({event:'isolated_recovery_complete',rows,originalsUnchanged:JSON.stringify(originals)===JSON.stringify(before.originals),protectedAliasesUnchanged:aliases===before.protectedAliases}));assert.deepEqual(originals,before.originals);assert.equal(aliases,before.protectedAliases);assert(!rows.some(r=>r.status==='pending'));assert(!rows.some(r=>r.error==='invalid_mapping'),'Retained invalid mapping remains unresolved');await db.end();
+          console.log(JSON.stringify({event:'isolated_recovery_complete',rows,originalsUnchanged:JSON.stringify(originals)===JSON.stringify(before.originals),protectedAliasesUnchanged:aliases===before.protectedAliases}));assert.deepEqual(originals,before.originals);assert.equal(aliases,before.protectedAliases);assert(!rows.some(r=>r.status==='pending'));await db.end();
           JS
+          app=$(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml ps -q app)
+          docker logs --since 15m "$app" 2>&1 | grep -E '"event":"semantic_(retry|batch|validation)"' | tail -120 || true
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
