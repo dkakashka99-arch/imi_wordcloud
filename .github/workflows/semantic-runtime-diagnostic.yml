@@ -30,7 +30,7 @@ jobs:
           cd "$root/releases/$RELEASE"
           compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
           "${compose[@]}" logs --tail=80 app
-          "${compose[@]}" exec -T app node --input-type=module -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:!!process.env.GIGACHAT_AUTH_KEY,keyFile:!!process.env.GIGACHAT_AUTH_KEY_FILE,caPresent:!!process.env.GIGACHAT_CA_BUNDLE}))'
+          "${compose[@]}" exec -T app node --input-type=module -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:!!process.env.GIGACHAT_AUTH_KEY,keyFile:!!process.env.GIGACHAT_AUTH_KEY_FILE,caPresent:!!process.env.GIGACHAT_CA_BUNDLE}))' </dev/null
           "${compose[@]}" run --rm -T tools node --input-type=module <<'JS'
           import {Pool} from 'pg';import {randomUUID,randomBytes} from 'node:crypto';
           const db=new Pool({connectionString:process.env.DATABASE_URL,max:1});
