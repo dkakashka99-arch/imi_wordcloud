@@ -78,7 +78,6 @@ export function Screen({ slug }: { slug: string; origin: string }) {
       <section className="screen-grid">
         <WordCloud key={group?.question?.id} words={group?.words || []} />
         <aside className="join-panel">
-          <span className="join-number">ВАШ ГОЛОС ВАЖЕН</span>
           <div className="qr">
             <Image
               unoptimized
@@ -92,11 +91,7 @@ export function Screen({ slug }: { slug: string; origin: string }) {
             Сканируйте
             <br />и отвечайте
           </h2>
-          <p>
-            Одна мысль — один ответ.
-            <br />
-            Без регистрации.
-          </p>
+
           <div className="answer-stat">
             <strong>{group?.answerCount || 0}</strong>
             <span>ответов получено</span>
@@ -113,14 +108,11 @@ export function Screen({ slug }: { slug: string; origin: string }) {
           </ul>
         </section>
       )}
-      <footer className="screen-footer">
-        <span>Будущее начинается с диалога</span>
-        <span>
-          {error
-            ? 'Восстанавливаем связь · последние данные сохранены'
-            : 'Ответы обновляются автоматически'}
-        </span>
-      </footer>
+      {error && (
+        <p className="screen-footer" role="status">
+          Восстанавливаем связь · последние данные сохранены
+        </p>
+      )}
     </main>
   );
 }

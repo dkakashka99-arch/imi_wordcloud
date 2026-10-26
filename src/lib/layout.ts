@@ -16,6 +16,21 @@ export function layoutWords(
   const visible = [...words]
     .sort((a, b) => b.count - a.count || a.text.localeCompare(b.text, 'ru'))
     .slice(0, CLOUD_LIMIT);
+  const families = [...new Set(visible.map((w) => w.family || w.text))];
+  const centers = new Map(
+    families.map((family, index) => {
+      const angle = (index * 2 * Math.PI) / Math.max(1, families.length);
+      return [
+        family,
+        families.length === 1
+          ? { x: 560, y: 290 }
+          : {
+              x: 560 + Math.cos(angle) * 290,
+              y: 290 + Math.sin(angle) * 145,
+            },
+      ];
+    }),
+  );
   const max = Math.max(1, ...visible.map((w) => w.count));
   // Repack at a smaller common scale before reducing visible top-N. Never use rows or stretch glyphs.
   let best: Placed[] = [];
@@ -36,11 +51,12 @@ export function layoutWords(
       );
       const width = measure(label, size) + 16,
         height = size * 1.22 + 6;
+      const center = centers.get(word.family || word.text)!;
       for (let step = 0; step < 8000; step++) {
         const angle = step * 0.39,
           radius = Math.sqrt(step) * 4.2;
-        const x = 560 + Math.cos(angle) * radius * 1.8,
-          y = 290 + Math.sin(angle) * radius;
+        const x = center.x + Math.cos(angle) * radius * 1.8,
+          y = center.y + Math.sin(angle) * radius;
         if (
           x - width / 2 < 14 ||
           x + width / 2 > 1106 ||

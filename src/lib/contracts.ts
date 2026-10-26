@@ -2,7 +2,7 @@ import { z } from 'zod';
 export const submissionInput = z
   .object({ questionId: z.uuid(), text: z.string().min(1).max(240), idempotencyKey: z.uuid() })
   .strict();
-export type Word = { text: string; count: number };
+export type Word = { text: string; count: number; family?: string | null };
 export type Question = {
   id: string;
   title: string;

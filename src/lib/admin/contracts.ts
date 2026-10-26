@@ -15,6 +15,8 @@ export const questionFields = {
   maxLength: z.number().int().min(1).max(120),
 };
 export const commandInput = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('deleteEvent'), confirmTitle: title }).strict(),
+  z.object({ action: z.literal('clearAnswers'), confirmTitle: title }).strict(),
   z.object({ action: z.literal('editEvent'), title }).strict(),
   z.object({ action: z.literal('archive'), archived: z.boolean() }).strict(),
   z

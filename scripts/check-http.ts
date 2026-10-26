@@ -9,10 +9,12 @@ const origin = 'http://localhost:3137';
 const slug = `http-test-${randomUUID()}`;
 const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
 await cp('.next/static', '.next/standalone/.next/static', { recursive: true });
+let reviewEnabled = true;
 function startServer() {
   return spawn(process.execPath, ['.next/standalone/server.js'], {
     env: {
       ...process.env,
+      GIGACHAT_ENABLED: String(reviewEnabled), // Uses precomputed fixture analysis; no provider credentials required.
       APP_ORIGIN: origin,
       HOSTNAME: '127.0.0.1',
       PORT: '3137',
@@ -57,6 +59,10 @@ try {
     'INSERT INTO question_audiences(event_id,question_id,audience_id,active) VALUES($1,$2,$3,true)',
     [eventId, q.rows[0].id, a.rows[0].id],
   );
+  await db.query(
+    `INSERT INTO answer_analysis(question_id,source,title,semantic_revision,verdict,canonical,family) VALUES($1,'надежная команда','Что важно?',0,'allow','надежная команда','коллектив')`,
+    [q.rows[0].id],
+  );
   await waitReady();
   const base = `${origin}/api/public/events/${slug}/all`;
   const state = await fetch(base);
@@ -85,7 +91,9 @@ try {
   const repeated = await post();
   assert.equal((await repeated.json()).duplicate, true);
   const snapshot = await (await fetch(`${origin}/api/public/events/${slug}/screen`)).json();
-  assert.deepEqual(snapshot.audiences[0].words, [{ text: 'надежная команда', count: 1 }]);
+  assert.deepEqual(snapshot.audiences[0].words, [
+    { text: 'надежная команда', count: 1, family: 'коллектив' },
+  ]);
   assert(!JSON.stringify(snapshot).includes('original_text'));
   assert(!JSON.stringify(snapshot).includes('participant_id'));
   const qr = await fetch(`${base}/qr`);
@@ -108,6 +116,21 @@ try {
     409,
   );
   await checkAdminHttp(origin);
+  await db.query("UPDATE questions SET status='open' WHERE id=$1", [q.rows[0].id]);
+  await stopServer();
+  reviewEnabled = false;
+  server = startServer();
+  await waitReady();
+  assert.equal(
+    (await post({ ...payload, text: 'новый ответ', idempotencyKey: randomUUID() })).status,
+    503,
+  );
+  assert.equal((await post()).status, 200); // A successful replay does not need another model call.
+  const protectedSnapshot = await (
+    await fetch(`${origin}/api/public/events/${slug}/screen`)
+  ).json();
+  assert.deepEqual(protectedSnapshot.audiences[0].words, snapshot.audiences[0].words);
+
   console.log(
     'HTTP FLOW PASS: cookie → validated POST → stored word → screen aggregate; replay, Origin, strict JSON, QR, pause and app restart persistence checked. Browser rendering is not covered.',
   );

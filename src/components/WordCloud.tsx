@@ -2,7 +2,12 @@
 import { useMemo } from 'react';
 import { layoutWords, CLOUD_LIMIT } from '@/lib/layout';
 import type { Word } from '@/lib/contracts';
-const colors = ['#e6edff', '#a6b8ff', '#81dbd0', '#bdd4ff'];
+export function familyColor(family: string) {
+  // Stable hue shared by every member, independent of vote order or frequency.
+  let hash = 0;
+  for (const c of family) hash = (Math.imul(hash, 31) + c.charCodeAt(0)) >>> 0;
+  return `hsl(${hash % 360} 65% 79%)`;
+}
 export function WordCloud({ words }: { words: Word[] }) {
   const placed = useMemo(() => {
     const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
@@ -32,7 +37,7 @@ export function WordCloud({ words }: { words: Word[] }) {
           role="img"
           aria-label={words.map((w) => `${w.text}: ${w.count}`).join('; ')}
         >
-          {placed.map((word, i) => (
+          {placed.map((word) => (
             <text
               key={word.text}
               x={word.x}
@@ -42,7 +47,7 @@ export function WordCloud({ words }: { words: Word[] }) {
               fontSize={word.size}
               fontFamily="Arial"
               fontWeight={600}
-              fill={colors[i % colors.length]}
+              fill={familyColor(word.family || word.text)}
             >
               <title>
                 {word.text}: {word.count}

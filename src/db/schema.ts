@@ -258,3 +258,25 @@ export const semanticHistory = pgTable('semantic_history', {
   version: text().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const answerAnalysis = pgTable(
+  'answer_analysis',
+  {
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => questions.id, { onDelete: 'cascade' }),
+    source: text().notNull(),
+    title: text().notNull(),
+    semanticRevision: bigint('semantic_revision', { mode: 'number' }).notNull(),
+    verdict: text().notNull(),
+    canonical: text().notNull(),
+    family: text().notNull(),
+  },
+  (t) => [
+    unique().on(t.questionId, t.source),
+    check(
+      'answer_analysis_verdict',
+      sql`${t.verdict} in ('allow','multiple','unsafe','irrelevant')`,
+    ),
+  ],
+);

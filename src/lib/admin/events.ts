@@ -72,10 +72,40 @@ export async function eventCommand(eventId: string, cmd: AdminCommand): Promise<
   const client = await database().connect();
   try {
     await client.query('BEGIN');
-    const e = await client.query('SELECT id,archived FROM events WHERE id=$1 FOR UPDATE', [
+    const e = await client.query('SELECT id,title,archived FROM events WHERE id=$1 FOR UPDATE', [
       eventId,
     ]);
     if (!e.rows[0]) throw new HttpError(404, 'Мероприятие не найдено.');
+    if (cmd.action === 'deleteEvent' || cmd.action === 'clearAnswers') {
+      if (cmd.confirmTitle !== e.rows[0].title)
+        throw new HttpError(409, 'Название мероприятия изменилось. Обновите страницу.');
+      await client.query('SELECT id FROM questions WHERE event_id=$1 ORDER BY id FOR UPDATE', [
+        eventId,
+      ]);
+      if (cmd.action === 'deleteEvent')
+        await client.query('DELETE FROM events WHERE id=$1', [eventId]);
+      else {
+        await client.query('DELETE FROM participants WHERE event_id=$1', [eventId]);
+        for (const table of [
+          'word_aliases',
+          'stop_words',
+          'semantic_queue',
+          'semantic_history',
+          'ai_jobs',
+          'answer_analysis',
+        ])
+          await client.query(
+            `DELETE FROM ${table} WHERE question_id IN(SELECT id FROM questions WHERE event_id=$1)`,
+            [eventId],
+          );
+        await client.query(
+          'UPDATE questions SET revision=revision+1,semantic_revision=semantic_revision+1,ai_summary=NULL,ai_summary_revision=NULL WHERE event_id=$1',
+          [eventId],
+        );
+      }
+      await client.query('COMMIT');
+      return { id: eventId };
+    }
     // All admin writes use event → ordered questions, shared with the participant lock order.
     const qs = await client.query(
       'SELECT id,title,status,max_answers,max_length,position FROM questions WHERE event_id=$1 ORDER BY id FOR UPDATE',
