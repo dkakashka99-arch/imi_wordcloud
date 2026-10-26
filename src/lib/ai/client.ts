@@ -1,3 +1,8 @@
+import {
+  configuredProviderLock,
+  serializedTransport,
+  ProviderQueueTimeout,
+} from './provider-budget';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import https from 'node:https';
@@ -339,6 +344,18 @@ let cached: { signature: string; client: GigaClient } | undefined;
 export function gigaClient() {
   const c = aiConfig();
   const signature = JSON.stringify(c);
-  if (!cached || cached.signature !== signature) cached = { signature, client: new GigaClient(c) };
+  if (!cached || cached.signature !== signature) {
+    const send = serializedTransport(transport, configuredProviderLock());
+    const budgeted: Transport = async (...args) => {
+      try {
+        return await send(...args);
+      } catch (error) {
+        if (error instanceof ProviderQueueTimeout)
+          throw new AiError('timeout', 'PROVIDER_QUEUE_DEADLINE');
+        throw error;
+      }
+    };
+    cached = { signature, client: new GigaClient(c, budgeted) };
+  }
   return cached.client;
 }
