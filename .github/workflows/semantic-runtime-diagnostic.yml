@@ -1,4 +1,4 @@
-name: Live admission candidate validation
+name: Diagnose deployed admission API
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -26,9 +26,19 @@ jobs:
           ssh -T -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -s' <<'REMOTE'
           set -eu
           root=/opt/imi-wordcloud
-          export RELEASE=8bcd59b8002b6e7f60b5544072148fff55caca7c
+          export RELEASE=$(cat "$root/shared/current-release")
           cd "$root/releases/$RELEASE"
-          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v "$root/shared/admission-candidate.ts:/app/src/lib/semantic/admission.ts:ro" tools node --import tsx scripts/check-admission-live.ts --live
+          compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
+          "${compose[@]}" logs --tail=80 app
+          "${compose[@]}" exec -T app node --input-type=module -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:!!process.env.GIGACHAT_AUTH_KEY,keyFile:!!process.env.GIGACHAT_AUTH_KEY_FILE,caPresent:!!process.env.GIGACHAT_CA_BUNDLE}))'
+          "${compose[@]}" run --rm -T tools node --input-type=module <<'JS'
+          import {Pool} from 'pg';import {randomUUID,randomBytes} from 'node:crypto';
+          const db=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+          const q=(await db.query("SELECT q.id,e.slug FROM questions q JOIN events e ON e.id=q.event_id WHERE e.slug LIKE 'semantic-acceptance-%' ORDER BY e.created_at DESC,q.position LIMIT 1")).rows[0];
+          if(q){const start=Date.now();const response=await fetch(process.env.APP_ORIGIN+'/api/public/events/'+q.slug+'/student/submissions',{method:'POST',headers:{Origin:process.env.APP_ORIGIN,'Content-Type':'application/json',Cookie:'mir_participant='+randomBytes(32).toString('hex')},body:JSON.stringify({questionId:q.id,text:'salary',idempotencyKey:randomUUID()}),signal:AbortSignal.timeout(65000)});console.log(JSON.stringify({status:response.status,ms:Date.now()-start,body:await response.text()}));}
+          await db.end();
+          JS
+          "${compose[@]}" logs --tail=50 app
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
