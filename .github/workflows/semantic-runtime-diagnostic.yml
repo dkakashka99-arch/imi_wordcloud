@@ -1,4 +1,4 @@
-name: Identify remaining queue diagnostics by test event metadata
+name: Resolve remaining historic diagnostics with real-event dry-run protection
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -8,7 +8,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,9 +28,19 @@ jobs:
           export RELEASE=$(cat "$root/shared/current-release")
           test "$RELEASE" = dfb18f664f89c743238a8f3aa1696227c4fca877
           cd "$root/releases/$RELEASE"
-          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/semantic-recovery-pr19-cohort.json:/run/cohort.json:ro tools node --input-type=module <<'JS'
-          import {Pool} from 'pg';const db=new Pool({connectionString:process.env.DATABASE_URL,max:2});
-          console.log(JSON.stringify({event:'remaining_diagnostic_metadata',rows:(await db.query("SELECT e.slug,e.rehearsal,e.created_at,e.archived,q.status,sq.status queue_status,sq.error,sq.error_detail,min(sq.available_at) first_attempt_after,max(sq.available_at) last_attempt_after,count(*)::int n FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE sq.error IN('invalid_mapping','invalid_response','empty_generation','safety_or_incomplete') GROUP BY 1,2,3,4,5,6,7,8")).rows}));await db.end();
+          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v /opt/imi-wordcloud/shared/semantic-recovery-pr19-cohort.json:/run/cohort.json:ro tools node --import tsx --input-type=module <<'JS'
+          import {Pool} from 'pg';import {readFileSync} from 'node:fs';import assert from 'node:assert/strict';
+          import {gigaClient,semanticModelPreference} from './src/lib/ai/client.ts';import {classify} from './src/lib/semantic/classifier.ts';import {sensitive} from './src/lib/ai/validation.ts';
+          const before=JSON.parse(readFileSync('/run/cohort.json','utf8'));const db=new Pool({connectionString:process.env.DATABASE_URL,max:3});const c=await db.connect();
+          let locked=false;for(let n=0;n<60;n++){locked=(await c.query('SELECT pg_try_advisory_lock(714021,4) locked')).rows[0].locked;if(locked)break;await new Promise(r=>setTimeout(r,1000));}assert(locked);
+          const real=(await c.query("SELECT sq.question_id,sq.source,q.title FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct' AND sq.status='review' AND sq.error='invalid_mapping'")).rows;assert.equal(real.length,2);
+          const ai=gigaClient();const model=await ai.model(semanticModelPreference());const dry=[];
+          for(const row of real){assert(!sensitive(row.source));const candidates=(await c.query("SELECT COALESCE(wa.target,s.canonical_key) text,count(*) n FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 AND s.approved AND s.original_text !~ '^[А-ЯЁ][а-яё]+[[:space:]]+[А-ЯЁ][а-яё]+' GROUP BY 1 ORDER BY n DESC,text LIMIT 150",[row.question_id])).rows.map(r=>r.text).filter(t=>!sensitive(t));const result=await classify(ai,model,row.title,[row.source],candidates);dry.push({proposed:result.matches.length,affected:result.affected.length,rejected:result.rejected});assert.equal(result.affected.length,0);}
+          await c.query('BEGIN');for(const row of real)await c.query("UPDATE semantic_queue SET error='protected_event',error_detail='DRY_RUN_CLASSIFIED_NO_APPLICATION' WHERE question_id=$1 AND source=$2 AND error='invalid_mapping'",[row.question_id,row.source]);
+          const retried=await c.query("UPDATE semantic_queue sq SET status='pending',attempts=0,available_at=now(),error_detail='SINGLE_CHOICE_REHEARSAL_RETRY' FROM questions q,events e WHERE sq.question_id=q.id AND q.event_id=e.id AND e.slug='rehearsal-25-oct' AND e.rehearsal AND sq.status='review' AND sq.error='invalid_mapping' RETURNING sq.question_id");assert.equal(retried.rowCount,1);await c.query('COMMIT');await c.query('SELECT pg_advisory_unlock(714021,4)');c.release();console.log(JSON.stringify({event:'historic_diagnostics_start',model,protectedDryRuns:dry,protectedApplied:0,rehearsalRetry:retried.rowCount}));
+          let remaining;for(let n=0;n<240;n++){remaining=(await db.query("SELECT sq.status,sq.error,sq.error_detail,sq.attempts FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='rehearsal-25-oct' AND sq.question_id=$1 AND sq.error_detail='SINGLE_CHOICE_REHEARSAL_RETRY'",[retried.rows[0].question_id])).rows;if(!remaining.some(r=>r.status==='pending'))break;await new Promise(r=>setTimeout(r,2000));}
+          const originals=(await db.query("SELECT count(*)::int n,md5(coalesce(string_agg(id::text||original_text||canonical_key,'|' ORDER BY id),'')) checksum FROM submissions WHERE created_at<=$1",[before.cutoff])).rows[0];const aliases=(await db.query("SELECT md5(coalesce(string_agg(wa.question_id::text||wa.source||wa.target,'|' ORDER BY wa.question_id,wa.source),'')) checksum FROM word_aliases wa JOIN questions q ON q.id=wa.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct'")).rows[0].checksum;
+          const errors=(await db.query("SELECT error,count(*)::int n FROM semantic_queue WHERE error IN('invalid_mapping','invalid_response','empty_generation','safety_or_incomplete') OR status='pending' GROUP BY 1")).rows;const queue=(await db.query('SELECT status,error,error_detail,count(*)::int n,max(attempts) max_attempts FROM semantic_queue GROUP BY 1,2,3')).rows;console.log(JSON.stringify({event:'historic_diagnostics_complete',errors,queue,originalsUnchanged:JSON.stringify(originals)===JSON.stringify(before.originals),protectedAliasesUnchanged:aliases===before.protectedAliases}));assert.deepEqual(originals,before.originals);assert.equal(aliases,before.protectedAliases);assert.equal(errors.length,0);await db.end();
           JS
           REMOTE
       - if: always()
