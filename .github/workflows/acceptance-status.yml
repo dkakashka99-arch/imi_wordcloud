@@ -1,0 +1,41 @@
+name: Read-only acceptance status
+on:
+  push:
+    branches: [ops/acceptance-readonly-monitor]
+    paths: [.github/workflows/acceptance-status.yml, ops/acceptance-status.sh]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure verified SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS || '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/status-ssh"
+          python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/status-ssh/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/status-ssh/known_hosts"
+      - name: Read installed SHA, resource counters and synthetic-only aggregates
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '212.109.196.228' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          set -o pipefail
+          ssh -i "$RUNNER_TEMP/status-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/status-ssh/known_hosts" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$DEPLOY_PORT" "deploy@$DEPLOY_HOST" 'bash -s' < ops/acceptance-status.sh | tee acceptance-status.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: read-only-acceptance-status
+          path: acceptance-status.txt
+          retention-days: 7
+      - name: Remove SSH files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/status-ssh/key" "$RUNNER_TEMP/status-ssh/known_hosts"
