@@ -34,9 +34,9 @@ jobs:
           "${compose[@]}" run --rm -T tools node --input-type=module <<'JS'
           import {Pool} from 'pg';import {randomUUID,randomBytes} from 'node:crypto';
           const db=new Pool({connectionString:process.env.DATABASE_URL,max:1});
-          const q=(await db.query("SELECT q.id,e.slug FROM questions q JOIN events e ON e.id=q.event_id WHERE e.slug LIKE 'semantic-acceptance-%' ORDER BY e.created_at DESC,q.position LIMIT 1")).rows[0];
+          const slug='admission-probe-'+randomUUID();const e=(await db.query("INSERT INTO events(slug,title,rehearsal) VALUES($1,'Isolated admission probe',true) RETURNING id",[slug])).rows[0].id;const a=(await db.query("INSERT INTO audiences(event_id,key,label) VALUES($1,'student','Test') RETURNING id",[e])).rows[0].id;const q=(await db.query("INSERT INTO questions(event_id,title,status) VALUES($1,'Что вы ожидаете от будущей работы?','open') RETURNING id",[e])).rows[0];q.slug=slug;await db.query("INSERT INTO question_audiences(event_id,question_id,audience_id,active) VALUES($1,$2,$3,true)",[e,q.id,a]);
           if(q){const start=Date.now();const response=await fetch(process.env.APP_ORIGIN+'/api/public/events/'+q.slug+'/student/submissions',{method:'POST',headers:{Origin:process.env.APP_ORIGIN,'Content-Type':'application/json',Cookie:'mir_participant='+randomBytes(32).toString('hex')},body:JSON.stringify({questionId:q.id,text:'salary',idempotencyKey:randomUUID()}),signal:AbortSignal.timeout(65000)});console.log(JSON.stringify({status:response.status,ms:Date.now()-start,body:await response.text()}));}
-          await db.end();
+          await db.query("DELETE FROM events WHERE id=$1",[e]);await db.end();
           JS
           "${compose[@]}" logs --tail=50 app
           REMOTE
