@@ -47,11 +47,5 @@ ln -sfn "$root/releases/$release" "$root/current.new"
 mv -Tf "$root/current.new" "$root/current"
 printf '%s\n' "$release" > "$root/shared/current-release"
 printf '%s\n' "$previous" > "$root/shared/previous-release"
-# One-time cleanup explicitly requested by the owner.
-if [[ ! -f "$root/shared/event-reset-2026-10-26.done" ]]; then
-  "${compose[@]}" run --rm -T tools node --import tsx scripts/prepare-event.ts --keep mir-27-oct
-  "${compose[@]}" run --rm -T tools node --import tsx scripts/prepare-event.ts --keep mir-27-oct --apply
-  touch "$root/shared/event-reset-2026-10-26.done"
-fi
 echo "Release $release ready; verify public HTTPS separately"
 # Never run docker volume prune or down -v. Retain previous images for rollback.

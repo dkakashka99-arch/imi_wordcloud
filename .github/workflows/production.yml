@@ -151,10 +151,6 @@ jobs:
           test "$(cat "$root/shared/current-release")" = "$release"
           docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
           docker stats --no-stream --format 'container={{.Name}} memory={{.MemUsage}} cpu={{.CPUPerc}}' "$app"
-          if [[ ! -f "$root/shared/event-reset-acceptance-2026-10-26.done" ]]; then
-            "${compose[@]}" run --rm -T tools node --import tsx scripts/prepare-event.ts --keep mir-27-oct --apply </dev/null
-            touch "$root/shared/event-reset-acceptance-2026-10-26.done"
-          fi
           echo 'ACCEPTANCE_CHAIN_COMPLETED'
           REMOTE
           node scripts/check-acceptance-evidence.mjs acceptance-results.txt
