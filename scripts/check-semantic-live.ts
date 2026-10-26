@@ -65,7 +65,7 @@ export const cases = [
   },
   {
     name: 'different-context',
-    question: 'Какие слова обозначают произведения искусства?',
+    question: 'Что вы ищете на рынке труда?',
     words: ['работа', 'работник'],
     same: false,
   },
