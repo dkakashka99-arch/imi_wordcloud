@@ -37,6 +37,11 @@ try {
       'INSERT INTO question_audiences(event_id,question_id,audience_id,active) VALUES($1,$2,$3,true)',
       [e.rows[0].id, q.rows[0].id, a.rows[0].id],
     );
+    for (let i = 0; i < 10; i++)
+      await db.query(
+        `INSERT INTO answer_analysis(question_id,source,title,semantic_revision,verdict,canonical,family) VALUES($1,$2,'Test',0,'allow',$2,'навыки')`,
+        [q.rows[0].id, `навык ${i}`],
+      );
     const start = Date.now();
     const latencies: number[] = [];
     const results = await Promise.all(
