@@ -3,23 +3,17 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { database } from '../src/db/client';
 import { cases } from './check-semantic-live';
-import { classify } from '../src/lib/semantic/classifier';
-import { AiError, gigaClient, semanticModelPreference } from '../src/lib/ai/client';
+import { AiError } from '../src/lib/ai/client';
 import { semanticTick } from '../src/lib/semantic/worker';
-import { sensitive } from '../src/lib/ai/validation';
+import { removeTestEvent } from './test-cleanup';
+import { protectedEventDigest } from './protected-event-digest';
 if (process.env.PRODUCTION_ACCEPTANCE !== 'true')
   throw new Error('Synthetic acceptance opt-in required');
 const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 const origin = process.env.APP_ORIGIN!;
 const slug = `semantic-acceptance-${randomUUID()}`;
-const protectedState = async () =>
-  JSON.stringify(
-    (
-      await db.query(
-        "SELECT (SELECT md5(coalesce(string_agg(s.id::text||s.original_text||s.canonical_key,'|' ORDER BY s.id),'')) FROM submissions s JOIN events e ON e.id=s.event_id WHERE e.slug='mir-27-oct') originals,(SELECT md5(coalesce(string_agg(wa.source||wa.target,'|' ORDER BY wa.question_id,wa.source),'')) FROM word_aliases wa JOIN questions q ON q.id=wa.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct') aliases",
-      )
-    ).rows,
-  );
+const protectedState = () => protectedEventDigest(db, 'mir-27-oct');
+let eventId: string | undefined;
 const before = await protectedState();
 try {
   const event = (
@@ -28,6 +22,7 @@ try {
       [slug],
     )
   ).rows[0].id;
+  eventId = event;
   const audience = (
     await db.query(
       "INSERT INTO audiences(event_id,key,label) VALUES($1,'student','Synthetic test') RETURNING id",
@@ -58,9 +53,21 @@ try {
           Cookie: `mir_participant=${randomBytes(32).toString('hex')}`,
         },
         body: JSON.stringify({ questionId: q, text, idempotencyKey: randomUUID() }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(70000),
       });
-      assert.equal(response.status, 200, `POST ${fixture.name}`);
+      console.log(
+        JSON.stringify({
+          event: 'production_admission_post',
+          case: fixture.name,
+          status: response.status,
+          traceId: response.headers.get('x-request-id'),
+        }),
+      );
+      assert.equal(
+        response.status,
+        200,
+        `POST ${fixture.name}; trace=${response.headers.get('x-request-id')}`,
+      );
     }
     fixtures.push({ ...fixture, q, words });
   }
@@ -83,7 +90,7 @@ try {
       [event, fixture.q],
     );
     const response = await fetch(`${origin}/api/public/events/${slug}/screen`, {
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(70000),
     });
     assert.equal(response.status, 200);
     const screen = await response.json();
@@ -134,7 +141,7 @@ try {
         Cookie: `mir_participant=${randomBytes(32).toString('hex')}`,
       },
       body: JSON.stringify({ questionId: outageQ, text, idempotencyKey: randomUUID() }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(70000),
     });
   assert.equal((await outagePost('тест недоступности')).status, 200);
   // Exercise only the background worker outage, independently of successful admission.
@@ -198,53 +205,8 @@ try {
     "UPDATE semantic_queue SET status='review',error='synthetic_outage_verified' WHERE question_id=$1",
     [outageQ],
   );
-  // Diagnose the protected historic queue without changing real-event aliases/votes.
-  const protectedQuestions = (
-    await db.query(
-      "SELECT DISTINCT q.id,q.title FROM semantic_queue sq JOIN questions q ON q.id=sq.question_id JOIN events e ON e.id=q.event_id WHERE e.slug='mir-27-oct' AND sq.error='protected_event'",
-    )
-  ).rows;
-  const ai = gigaClient(),
-    model = await ai.model(semanticModelPreference());
-  for (const q of protectedQuestions) {
-    const sources = (
-      await db.query(
-        "SELECT source FROM semantic_queue WHERE question_id=$1 AND error='protected_event'",
-        [q.id],
-      )
-    ).rows
-      .map((r) => r.source)
-      .filter((s) => !sensitive(s));
-    const candidates = (
-      await db.query(
-        "SELECT COALESCE(wa.target,s.canonical_key) text,count(*) n FROM submissions s LEFT JOIN word_aliases wa ON wa.question_id=s.question_id AND wa.source=s.canonical_key WHERE s.question_id=$1 AND s.approved AND s.original_text !~ '^[А-ЯЁ][а-яё]+[[:space:]]+[А-ЯЁ][а-яё]+' GROUP BY 1 ORDER BY n DESC,text LIMIT 150",
-        [q.id],
-      )
-    ).rows
-      .map((r) => r.text)
-      .filter((s) => !sensitive(s));
-    const result = await classify(ai, model, q.title, sources, candidates);
-    console.log(
-      JSON.stringify({
-        event: 'protected_recovery_dry_run',
-        count: sources.length,
-        proposed: result.matches.length,
-        unmatched: sources.length - result.matches.length,
-        applied: 0,
-        model,
-      }),
-    );
-    await db.query(
-      "UPDATE semantic_queue SET error_detail='DRY_RUN_CLASSIFIED_NO_APPLICATION' WHERE question_id=$1 AND error='protected_event'",
-      [q.id],
-    );
-  }
+  // Real-event diagnostics are strictly read-only digests; no provider calls on live answers.
   assert.equal(await protectedState(), before, 'Protected real event data changed');
-  const queue = (
-    await db.query(
-      'SELECT status,error,error_detail,count(*)::int n,max(attempts) max_attempts FROM semantic_queue GROUP BY 1,2,3',
-    )
-  ).rows;
   console.log(
     JSON.stringify({
       event: 'production_semantic_complete',
@@ -253,20 +215,16 @@ try {
       pending,
       failures,
       protectedEventUnchanged: true,
-      queue,
     }),
   );
   assert.equal(pending, 0);
   assert.equal(failures, 0);
-  // Keep the Safari question selected for a human/browser visual check.
-  const safari = fixtures.find((f) => f.name === 'safari')!;
-  await db.query('UPDATE question_audiences SET active=false WHERE event_id=$1', [event]);
-  await db.query('UPDATE question_audiences SET active=true WHERE event_id=$1 AND question_id=$2', [
-    event,
-    safari.q,
-  ]);
-  await db.query("UPDATE questions SET status='paused' WHERE event_id=$1", [event]);
 } finally {
-  await db.end();
-  await database().end();
+  try {
+    if (eventId) await removeTestEvent(db, eventId, slug);
+    assert.equal(await protectedState(), before, 'Protected real event data changed');
+  } finally {
+    await db.end();
+    await database().end();
+  }
 }

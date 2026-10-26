@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { gigaClient, semanticModelPreference, type GigaClient } from '../ai/client';
+import { AiError, gigaClient, semanticModelPreference, type GigaClient } from '../ai/client';
 import { normalizeWord } from '../normalize';
 import { rejectionReason } from './rules';
+import { diagnosticStage } from '../diagnostics';
 
 export const admissionSchema = z
   .object({
@@ -19,23 +20,32 @@ verdict: unsafe — мат (включая маскировку и другие 
 canonical: исправь очевидную орфографию, опечатки, словоформы, транслитерацию; переведи на русский, сохраняя смысл и собственные названия. Если есть семантически эквивалентный кандидат, дословно используй его canonical. Синонимы объединяй. Сохраняй отрицания, степень и оценку. Не объединяй разные понятия только по теме или корню.
 family: краткое русское название общей смысловой темы. Для близких, но не синонимичных понятий используй ОДНО family и РАЗНЫЕ canonical. Переиспользуй подходящее family из кандидатов. Например доход и высокая зарплата могут иметь общее семейство, сохраняя разные значения. Правила применяй к любым вопросам и словам, а не только к примерам.
 Верни только JSON по схеме; для отклонённых ответов canonical и family всё равно заполни краткими нейтральными значениями.`;
+function parseAnalysis(value: unknown): Analysis {
+  const parsed = admissionSchema.safeParse(value);
+  if (!parsed.success) throw new AiError('invalid_response', 'RESULT_SCHEMA');
+  return parsed.data;
+}
 async function analyzeAnswerImpl(
   question: string,
   text: string,
   candidates: { canonical: string; family: string }[],
   ai: Pick<GigaClient, 'model' | 'generate'> = gigaClient(),
 ): Promise<Analysis> {
+  diagnosticStage('choose-model');
   const model = await ai.model(semanticModelPreference());
+  diagnosticStage('generate');
   const response = await ai.generate(
     model,
     admissionPrompt,
     { question, text, candidates },
     z.toJSONSchema(admissionSchema),
   );
-  let result = admissionSchema.parse(response.result);
+  diagnosticStage('validate');
+  let result = parseAnalysis(response.result);
   if (result.verdict === 'irrelevant' || result.verdict === 'unsafe') {
     // A separate focused review must confirm a rejection. Candidate vocabulary
     // is excluded here so existing answers cannot become an accidental allowlist.
+    diagnosticStage('generate');
     const review = await ai.generate(
       model,
       admissionPrompt +
@@ -43,7 +53,8 @@ async function analyzeAnswerImpl(
       { question, text },
       z.toJSONSchema(admissionSchema),
     );
-    result = admissionSchema.parse(review.result);
+    diagnosticStage('validate');
+    result = parseAnalysis(review.result);
   }
   result.canonical = normalizeWord(result.canonical);
   result.family = normalizeWord(result.family);
@@ -54,7 +65,7 @@ async function analyzeAnswerImpl(
       rejectionReason(result.canonical) ||
       rejectionReason(result.family))
   )
-    throw new Error('Invalid normalized answer');
+    throw new AiError('invalid_response', 'NORMALIZED_OUTPUT');
   return result;
 }
 export function admissionMessage(verdict: Analysis['verdict']) {
