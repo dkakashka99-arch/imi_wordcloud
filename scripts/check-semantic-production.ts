@@ -53,18 +53,21 @@ try {
             [q],
           )
         ).rows;
-        const started = Date.now();
-        const direct = await analyzeAnswer(fixture.question, text, candidates);
-        assert.equal(direct.verdict, 'allow', `Direct ${fixture.name}`);
-        console.log(
-          JSON.stringify({
-            event: 'production_admission_direct',
-            case: fixture.name,
-            candidateCount: candidates.length,
-            elapsedMs: Date.now() - started,
-            verdict: direct.verdict,
-          }),
-        );
+        for (let repeat = 0; repeat < 2; repeat++) {
+          const started = Date.now();
+          const direct = await analyzeAnswer(fixture.question, text, candidates);
+          assert.equal(direct.verdict, 'allow', `Direct ${fixture.name}`);
+          console.log(
+            JSON.stringify({
+              event: 'production_admission_direct',
+              case: fixture.name,
+              candidateCount: candidates.length,
+              elapsedMs: Date.now() - started,
+              verdict: direct.verdict,
+              repeat,
+            }),
+          );
+        }
       }
       const started = Date.now();
       const response = await fetch(`${origin}/api/public/events/${slug}/student/submissions`, {

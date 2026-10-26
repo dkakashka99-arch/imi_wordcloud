@@ -28,3 +28,17 @@ Unit regression: 250 concurrent discoveries plus successive answers use one cata
 Production acceptance now also invokes the existing 25-case direct admission suite. Word-form/translation direct calls use candidates read from the same synthetic question, followed by real POSTs with request IDs and timings. This distinguishes empty/populated candidate context and direct/HTTP execution.
 
 Status: correction prepared; **do not mark 503 resolved until final installed-SHA acceptance succeeds**.
+
+## Second production trace: shared account concurrency
+
+Production [40324405627](https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/40324405627), installed `5ea52356cad43563812f247d81dbbf16a450cc25`:
+
+- Direct admission regression passed 25/25.
+- HTTP word-form cases passed, as did the initial translation POSTs.
+- The direct translation control then failed with `AiError(quota)` in `GigaClient.generate`, despite the cached catalog and bounded retries. No application POST failed in that run before this independent direct control stopped the chain.
+- Official provider documentation explicitly describes 429 when concurrent requests exceed the client allowance; by default individuals have one simultaneous stream: https://developers.sber.ru/docs/ru/gigachat/api/errors-description (checked 26 October 2026).
+- Admission requests had no shared budget with the background worker or tools. The worker/organizer lock `(714021,4)` coordinated only those background operations. Different processes and HTTP calls could still use the same account concurrently. Thus catalog caching alone is insufficient.
+
+Follow-up correction: serialize provider transport requests locally and coordinate sessions across application, worker and trusted tools using a separate PostgreSQL advisory lock `(714021,5)`. No schema migration. No question/submission transaction is held during provider I/O. Use a dedicated one-connection pool per process and bound queue/transport waiting by the original request deadline; destroy failed sessions to release uncertain locks. Preserve cached model discovery and bounded explicit 429 retry for external account users that cannot participate in this lock.
+
+Regression: separate database client pools must never overlap their synthetic network work, even after an injected failure; late/expired local waiters cannot jump the queue or leak the lock. Native PostgreSQL CI is authoritative for session-lock behavior; the WASM single-backend test contour skips that cross-session test explicitly.

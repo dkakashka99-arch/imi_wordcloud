@@ -37,3 +37,13 @@ Synthetic event cleanup and protected digest verification ran in finally; neithe
 Validate and publish the model-catalog cache/single-flight and bounded 429 retry correction in a separate PR. Re-run direct 25-case regression and real HTTP acceptance on installed SHA. Finish the full 60-minute 250-participant test before declaring P0 ready. Then implement Live Cloud independently behind an off-by-default flag.
 
 P0: **NOT READY**. Live Cloud: **NOT DONE**. Physical RF networks, phone QR and actual projector remain unverified.
+
+## Follow-up after PR #27
+
+PR #27 installed as `5ea52356cad43563812f247d81dbbf16a450cc25`. Main CI `40323680871` and Infrastructure `40323680857` passed; Production `40324405627` backup/deploy passed, acceptance failed in the direct translation control with generation-stage `quota`. Direct regression 25/25 and all preceding HTTP word-form/translation POSTs passed. The 60-minute soak did not start. Do not label this release ready.
+
+Read-only inventory [40325291058](https://github.com/dkakashka99-arch/imi_wordcloud/actions/runs/40325291058) verified installed SHA, rollback `9aa31be...`, Docker 29.9.2, Compose 5.6.1, PostgreSQL 17.11, Node 24.22.1, both containers running with zero restarts/OOM, app ~60MiB, DB ~88MiB, disk ~48,014,440KiB available. This is a point-in-time idle snapshot, not a load benchmark.
+
+Current public event exposes only `student` (verified via safe audience keys). Its SVG and PNG QR were decoded to the exact participant URL; participant GET returned 200. Employer QR returns 404 consistently with the current public audience configuration; no event configuration changed. Physical phone/projector/Russian-network checks remain open.
+
+Next action: validate/release shared cross-process provider request budget. Catalog caching alone cannot prevent concurrent generations by HTTP admission, worker and trusted tools. See root-cause follow-up. Current test-created synthetic event was cleaned after failure; an older synthetic fixture from the pre-task acceptance remains untouched because it is not owned by this invocation.
