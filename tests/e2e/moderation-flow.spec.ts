@@ -68,6 +68,9 @@ test('moderation rejects HTML, hides and restores accepted text, CSV downloads a
   await expect(phone.getByRole('status')).toContainText('Ответ принят');
   const screen = await context.newPage();
   await screen.goto(`/e/${slug}/screen`);
+  await expect(screen.getByRole('heading', { name: 'Выберите экран опроса', exact: true })).toBeVisible();
+  await screen.goto(`/e/${slug}/screen?audience=all`);
+  await expect(screen.locator('.screen')).toBeVisible();
   await expect(screen.getByRole('img', { name: payload + ': 1', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Обновить ответы', exact: true }).click();
   await expect(page.getByText(payload, { exact: true })).toBeVisible();
