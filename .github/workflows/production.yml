@@ -146,6 +146,7 @@ jobs:
           compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
           app=$("${compose[@]}" ps -q app)
           docker inspect --format 'image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' "$app"
+          "${compose[@]}" run --rm -T tools node --import tsx scripts/check-admission-live.ts --live </dev/null
           "${compose[@]}" run --rm -T -e PRODUCTION_ACCEPTANCE=true tools node --import tsx scripts/check-semantic-production.ts </dev/null
           "${compose[@]}" run --rm -T -e PRODUCTION_ACCEPTANCE=true tools node --import tsx scripts/soak-production.ts </dev/null
           test "$(cat "$root/shared/current-release")" = "$release"

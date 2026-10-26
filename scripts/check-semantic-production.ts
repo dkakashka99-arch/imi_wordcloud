@@ -6,6 +6,7 @@ import { cases } from './check-semantic-live';
 import { AiError } from '../src/lib/ai/client';
 import { semanticTick } from '../src/lib/semantic/worker';
 import { removeTestEvent } from './test-cleanup';
+import { analyzeAnswer } from '../src/lib/semantic/admission';
 import { protectedEventDigest } from './protected-event-digest';
 if (process.env.PRODUCTION_ACCEPTANCE !== 'true')
   throw new Error('Synthetic acceptance opt-in required');
@@ -45,6 +46,27 @@ try {
     // The repeated correct spelling makes canonical preference measurable in the real worker.
     const words = [fixture.words[0], ...fixture.words];
     for (const text of words) {
+      if (fixture.name === 'word-form' || fixture.name === 'translation') {
+        const candidates = (
+          await db.query(
+            "SELECT canonical,family FROM answer_analysis WHERE question_id=$1 AND verdict='allow' ORDER BY canonical",
+            [q],
+          )
+        ).rows;
+        const started = Date.now();
+        const direct = await analyzeAnswer(fixture.question, text, candidates);
+        assert.equal(direct.verdict, 'allow', `Direct ${fixture.name}`);
+        console.log(
+          JSON.stringify({
+            event: 'production_admission_direct',
+            case: fixture.name,
+            candidateCount: candidates.length,
+            elapsedMs: Date.now() - started,
+            verdict: direct.verdict,
+          }),
+        );
+      }
+      const started = Date.now();
       const response = await fetch(`${origin}/api/public/events/${slug}/student/submissions`, {
         method: 'POST',
         headers: {
@@ -61,6 +83,7 @@ try {
           case: fixture.name,
           status: response.status,
           traceId: response.headers.get('x-request-id'),
+          elapsedMs: Date.now() - started,
         }),
       );
       assert.equal(
