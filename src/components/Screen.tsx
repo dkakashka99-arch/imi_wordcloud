@@ -1,10 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import type { ScreenState } from '@/lib/contracts';
 import { WordCloud } from './WordCloud';
 import { requestJson } from '@/lib/client-request';
-export function Screen({ slug }: { slug: string; origin: string }) {
+export function Screen({ slug, audience }: { slug: string; origin: string; audience?: string }) {
+  const [selected, setSelected] = useState(audience || '');
   const [data, setData] = useState<ScreenState | null>(null),
     [error, setError] = useState(false);
   useEffect(() => {
@@ -40,10 +42,47 @@ export function Screen({ slug }: { slug: string; origin: string }) {
       controller.abort();
     };
   }, [slug]);
-  const group = data?.audiences.find((a) => a.key === 'student') || data?.audiences[0];
+  const group =
+    data?.audiences.find((a) => a.key === selected) ||
+    (data?.audiences.length === 1 ? data.audiences[0] : undefined);
+  const choose = (key: string) => {
+    setSelected(key);
+    const url = new URL(window.location.href);
+    if (key) url.searchParams.set('audience', key);
+    else url.searchParams.delete('audience');
+    window.history.replaceState(null, '', url);
+  };
+  if (data && !group)
+    return (
+      <main className="shell">
+        <Link href="/">← На главную</Link>
+        <h1>Выберите экран опроса</h1>
+        <p>{data.title}</p>
+        <p>Выберите аудиторию: на экране появятся её текущий вопрос, облако и QR-код.</p>
+        <section className="cards">
+          {data.audiences.map((a) => (
+            <article className="card" key={a.key}>
+              <h2>{a.label}</h2>
+              <p>{a.question?.title || 'Вопрос пока не выбран'}</p>
+              <button className="button" onClick={() => choose(a.key)}>
+                Открыть экран
+              </button>
+            </article>
+          ))}
+        </section>
+      </main>
+    );
   const status = group?.question?.status;
   return (
     <main className="screen">
+      <nav className="home-navigation" aria-label="Навигация экрана">
+        <Link href="/">← На главную</Link>
+        {data && data.audiences.length > 1 && (
+          <button className="button quiet" onClick={() => choose('')}>
+            Сменить аудиторию · {group?.label}
+          </button>
+        )}
+      </nav>
       <header className="top">
         <span className="brand">
           мир <span className="brand-divider">/</span> диалог о будущем
