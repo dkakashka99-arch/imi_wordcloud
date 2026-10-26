@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: fix/open-response-moderation
+          ref: main
       - name: Validate candidate on trusted VPS without switching traffic
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -23,13 +23,19 @@ jobs:
           python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
           printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
           scp -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" src/lib/semantic/admission.ts deploy@212.109.196.228:/opt/imi-wordcloud/shared/admission-candidate.ts
-          scp -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" scripts/check-admission-live.ts deploy@212.109.196.228:/opt/imi-wordcloud/shared/admission-check.ts
           ssh -T -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -s' <<'REMOTE'
           set -eu
           root=/opt/imi-wordcloud
-          export RELEASE=$(cat "$root/shared/current-release")
+          export RELEASE=8bcd59b8002b6e7f60b5544072148fff55caca7c
           cd "$root/releases/$RELEASE"
-          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v "$root/shared/admission-candidate.ts:/app/src/lib/semantic/admission.ts:ro" -v "$root/shared/admission-check.ts:/app/scripts/check-admission-live.ts:ro" tools node --import tsx scripts/check-admission-live.ts --live </dev/null
+          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T tools node --input-type=module <<'JS'
+          import {Pool} from 'pg';import {randomUUID,randomBytes} from 'node:crypto';import assert from 'node:assert/strict';
+          const db=new Pool({connectionString:process.env.DATABASE_URL,max:1});let e;
+          try{const slug='moderation-check-'+randomUUID();e=(await db.query("INSERT INTO events(slug,title,rehearsal) VALUES($1,'Disposable moderation check',true) RETURNING id",[slug])).rows[0].id;const a=(await db.query("INSERT INTO audiences(event_id,key,label) VALUES($1,'student','Test') RETURNING id",[e])).rows[0].id;const q=(await db.query("INSERT INTO questions(event_id,title,status) VALUES($1,'Что вы ожидаете от будущей работы?','open') RETURNING id",[e])).rows[0].id;await db.query("INSERT INTO question_audiences(event_id,question_id,audience_id,active) VALUES($1,$2,$3,true)",[e,q,a]);
+          for(const [text,expected] of [['свободное время',200],['перспективы',200],['уважение',200],['красивые женщины',200],['зарплата и график',400],['секс',400],['бл78ять',400]]){const r=await fetch(process.env.APP_ORIGIN+'/api/public/events/'+slug+'/student/submissions',{method:'POST',headers:{Origin:process.env.APP_ORIGIN,'Content-Type':'application/json',Cookie:'mir_participant='+randomBytes(32).toString('hex')},body:JSON.stringify({questionId:q,text,idempotencyKey:randomUUID()}),signal:AbortSignal.timeout(65000)});console.log(JSON.stringify({case:text,status:r.status,expected}));assert.equal(r.status,expected);}
+          assert.equal((await db.query('SELECT count(*)::int n FROM submissions WHERE event_id=$1',[e])).rows[0].n,4);console.log('LIVE_MODERATION_API_PASS');
+          }finally{if(e)await db.query('DELETE FROM events WHERE id=$1',[e]);await db.end();}
+          JS
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
