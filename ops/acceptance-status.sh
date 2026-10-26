@@ -30,7 +30,10 @@ try {
   console.log(JSON.stringify({event:'runtime_inventory',node:process.version,
     gigachatEnabled:process.env.GIGACHAT_ENABLED==='true',
     authConfigured:!!(process.env.GIGACHAT_AUTH_KEY || process.env.GIGACHAT_AUTH_KEY_FILE),
-    caConfigured:!!process.env.GIGACHAT_CA_BUNDLE}));
+    caConfigured:!!process.env.GIGACHAT_CA_BUNDLE,
+    scope:['GIGACHAT_API_PERS','GIGACHAT_API_B2B','GIGACHAT_API_CORP'].includes(process.env.GIGACHAT_SCOPE||'GIGACHAT_API_PERS') ? (process.env.GIGACHAT_SCOPE||'GIGACHAT_API_PERS') : 'invalid',
+    semanticModel:['GigaChat-2-Pro','GigaChat-2','GigaChat-2-Max'].includes(process.env.GIGACHAT_SEMANTIC_MODEL||'GigaChat-2-Pro') ? (process.env.GIGACHAT_SEMANTIC_MODEL||'GigaChat-2-Pro') : 'configured-other',
+    timeoutMs: Number(process.env.GIGACHAT_TIMEOUT_MS||20000)}));
   await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   const {rows} = await db.query(`SELECT e.slug,e.created_at,
     (SELECT count(*)::int FROM submissions s WHERE s.event_id=e.id) submissions,
