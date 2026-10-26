@@ -1,4 +1,4 @@
-name: Diagnose deployed admission API
+name: Live admission candidate validation
 on:
   push:
     branches: [ops/initial-vps-access]
@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: fix/admission-relevance
+          ref: fix/open-response-moderation
       - name: Validate candidate on trusted VPS without switching traffic
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -23,17 +23,13 @@ jobs:
           python3 ops/normalize-ssh-key.py "$RUNNER_TEMP/ssh/key"
           printf '%s\n' '212.109.196.228 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP2pCyNRY+vzT6biE/COZgoFYewXJz4acfqM4NNRsJEA' > "$RUNNER_TEMP/ssh/known_hosts"
           scp -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" src/lib/semantic/admission.ts deploy@212.109.196.228:/opt/imi-wordcloud/shared/admission-candidate.ts
+          scp -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" scripts/check-admission-live.ts deploy@212.109.196.228:/opt/imi-wordcloud/shared/admission-check.ts
           ssh -T -i "$RUNNER_TEMP/ssh/key" -o StrictHostKeyChecking=yes -o BatchMode=yes -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" deploy@212.109.196.228 'bash -s' <<'REMOTE'
           set -eu
           root=/opt/imi-wordcloud
           export RELEASE=$(cat "$root/shared/current-release")
           cd "$root/releases/$RELEASE"
-          compose=(docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml)
-          "${compose[@]}" logs --tail=80 app
-          "${compose[@]}" exec -T app node --input-type=module -e 'console.log(JSON.stringify({enabled:process.env.GIGACHAT_ENABLED,keyPresent:!!process.env.GIGACHAT_AUTH_KEY,keyFile:!!process.env.GIGACHAT_AUTH_KEY_FILE,caPresent:!!process.env.GIGACHAT_CA_BUNDLE}))' </dev/null
-          "${compose[@]}" run --rm -T tools node --import tsx scripts/prepare-event.ts --keep mir-27-oct --apply </dev/null
-
-          "${compose[@]}" logs --tail=50 app
+          docker compose --env-file "$root/shared/compose.env" -f compose.production.yaml run --rm -T -v "$root/shared/admission-candidate.ts:/app/src/lib/semantic/admission.ts:ro" -v "$root/shared/admission-check.ts:/app/scripts/check-admission-live.ts:ro" tools node --import tsx scripts/check-admission-live.ts --live </dev/null
           REMOTE
       - if: always()
         run: rm -f "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts"
