@@ -8,7 +8,21 @@ const candidates = [
   { canonical: 'зарплата', family: 'доход' },
   { canonical: 'высокая зарплата', family: 'доход' },
 ];
-const cases = [
+const cases: { text: string; verdict: string; canonical?: string; family?: string }[] = [
+  ...[
+    'свободное время',
+    'перспективы',
+    'уважение',
+    'красивые женщины',
+    'комфорт',
+    'дружба',
+    'счастье',
+    'смысл',
+    'независимость',
+    'путешествия',
+    'отсутствие стресса',
+    'кайф',
+  ].map((text) => ({ text, verdict: 'allow' })),
   { text: 'баланс работы и жизни', verdict: 'allow' },
   { text: 'работа, которая нравится', verdict: 'allow' },
   { text: 'страхование', verdict: 'allow' },
